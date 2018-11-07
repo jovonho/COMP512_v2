@@ -43,19 +43,15 @@ public class ResourceManager implements IResourceManager
 		synchronized(m_data) {
 			RMItem item = m_data.get(key);
 			if (item != null) {
+				System.out.println("in readData");
+				System.out.println("item:" + item.toString());
 				return (RMItem)item.clone();
 			}
 			return null;
 		}
 	}
 
-	public int start() throws RemoteException{
-		return 0;
-	}
 
-	public boolean commit(int xid) throws RemoteException, TransactionAbortedException, InvalidTransactionException{
-		return false;
-	}
 
 	// Writes a data item
 	protected void writeData(int xid, String key, RMItem value)
@@ -407,6 +403,28 @@ public class ResourceManager implements IResourceManager
 	public String getName() throws RemoteException
 	{
 		return m_name;
+	}
+	
+	
+
+	public int start() throws RemoteException{
+		return 0;
+	}
+
+	public boolean commit(int xid) throws RemoteException, TransactionAbortedException, InvalidTransactionException{
+		return false;
+	}
+	
+	@Override
+	public void abort(int xid) throws RemoteException, InvalidTransactionException {
+		// TODO Auto-generated method stub
+		
+	}
+
+	@Override
+	public void shutdown() throws RemoteException {
+		Trace.info("RM::" + m_name + " ready to shut down");
+		System.exit(0);
 	}
 }
  

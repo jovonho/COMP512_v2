@@ -6,6 +6,9 @@ import java.rmi.RemoteException;
 import java.util.Calendar;
 import java.util.Vector;
 
+import Server.Interface.InvalidTransactionException;
+import Server.Interface.TransactionAbortedException;
+
 import Server.Common.*;
 
 /**
@@ -31,13 +34,41 @@ public abstract class Middleware implements IResourceManager {
 	static IResourceManager m_flightsManager = null;
 	static IResourceManager m_carsManager = null;
 	static IResourceManager m_roomsManager = null;
+	
+	static TransactionManager txManager = null;
 
 
 	public Middleware(String p_name)
 	{
 		m_name = p_name;
+		txManager = new TransactionManager(this);
 	}
 	
+	public int start() {
+		return txManager.start();
+	}
+	
+	public void abort(int xid) throws InvalidTransactionException {
+			txManager.abort(xid);
+	}
+	
+	public void shutdown() throws RemoteException {
+		try {
+			shutdownFlights();
+		} catch (Exception e) {
+			try { shutdownCars();
+			}
+			catch (Exception e2) {
+				shutdownRooms();
+			}
+		} finally {
+			System.exit(0);
+		}
+	}
+	
+	public boolean commit(int transactionId) throws RemoteException, InvalidTransactionException, TransactionAbortedException {
+		return txManager.commit(transactionId);
+	}
 	
 	// Reads a data item
 	protected RMItem readData(int xid, String key)
@@ -236,80 +267,80 @@ public abstract class Middleware implements IResourceManager {
 
 	// Create a new flight, or add seats to existing flight
 	// NOTE: if flightPrice <= 0 and the flight already exists, it maintains its current price
-	/*public boolean addFlight(int xid, int flightNum, int flightSeats, int flightPrice) throws RemoteException
+	public boolean addFlight(int xid, int flightNum, int flightSeats, int flightPrice) throws RemoteException, InvalidTransactionException, TransactionAbortedException
 	{
 		Trace.info("RM::addFlight(" + xid + ", " + flightNum + ", " + flightSeats + ", $" + flightPrice + ") called");
-		return m_flightsManager.addFlight(xid, flightNum, flightSeats, flightPrice);
+		return txManager.addFlight(xid, flightNum, flightSeats, flightPrice);
 	}
 
 	// Create a new car location or add cars to an existing location
 	// NOTE: if price <= 0 and the location already exists, it maintains its current price
-	public boolean addCars(int xid, String location, int count, int price) throws RemoteException
+	public boolean addCars(int xid, String location, int count, int price) throws RemoteException, InvalidTransactionException, TransactionAbortedException
 	{
 		Trace.info("RM::addCars(" + xid + ", " + location + ", " + count + ", $" + price + ") called");
-		return m_carsManager.addCars(xid, location, count, price);
+		return txManager.addCars(xid, location, count, price);
 	}
 
 	// Create a new room location or add rooms to an existing location
 	// NOTE: if price <= 0 and the room location already exists, it maintains its current price
-	public boolean addRooms(int xid, String location, int count, int price) throws RemoteException
+	public boolean addRooms(int xid, String location, int count, int price) throws RemoteException, InvalidTransactionException, TransactionAbortedException
 	{
 		Trace.info("RM::addRooms(" + xid + ", " + location + ", " + count + ", $" + price + ") called");
-		return m_roomsManager.addRooms(xid, location, count, price);
-	}*/
+		return txManager.addRooms(xid, location, count, price);
+	}
 
 	// Deletes flight
-	public boolean deleteFlight(int xid, int flightNum) throws RemoteException
+	public boolean deleteFlight(int xid, int flightNum) throws RemoteException, InvalidTransactionException, TransactionAbortedException
 	{
-		return m_flightsManager.deleteFlight(xid, flightNum);
+		return txManager.deleteFlight(xid, flightNum);
 	}
 
 	// Delete cars at a location
-	public boolean deleteCars(int xid, String location) throws RemoteException
+	public boolean deleteCars(int xid, String location) throws RemoteException, InvalidTransactionException, TransactionAbortedException
 	{
-		return m_carsManager.deleteCars(xid, location);
+		return txManager.deleteCars(xid, location);
 	}
 
 	// Delete rooms at a location
-	public boolean deleteRooms(int xid, String location) throws RemoteException
+	public boolean deleteRooms(int xid, String location) throws RemoteException, InvalidTransactionException, TransactionAbortedException
 	{
-		return m_roomsManager.deleteRooms(xid, location);
+		return txManager.deleteRooms(xid, location);
 	}
 
 	// Returns the number of empty seats in this flight
-	/*public int queryFlight(int xid, int flightNum) throws RemoteException
+	public int queryFlight(int xid, int flightNum) throws RemoteException, InvalidTransactionException, TransactionAbortedException
 	{
-		return m_flightsManager.queryFlight(xid, flightNum);
-	}*/
+		return txManager.queryFlight(xid, flightNum);
+	}
 
 	// Returns the number of cars available at a location
 	public int queryCars(int xid, String location) throws RemoteException
 	{
-		return m_carsManager.queryCars(xid, location);
+		return 0;
 	}
 
 	// Returns the amount of rooms available at a location
 	public int queryRooms(int xid, String location) throws RemoteException
 	{
-		return m_roomsManager.queryRooms(xid, location);
+		return 0;
 	}
 
 	// Returns price of a seat in this flight
 	public int queryFlightPrice(int xid, int flightNum) throws RemoteException
 	{
-		return m_flightsManager.queryFlightPrice(xid, flightNum);
+		return 0;
 	}
 
 	// Returns price of cars at this location
 	public int queryCarsPrice(int xid, String location) throws RemoteException
 	{
-		return m_carsManager.queryCarsPrice(xid, location);
+		return 0;
 	}
 
 	// Returns room price at this location
 	public int queryRoomsPrice(int xid, String location) throws RemoteException
 	{
-		return m_roomsManager.queryRoomsPrice(xid, location);
+		return 0;
 	}
 
 	public String queryCustomerInfo(int xid, int customerID) throws RemoteException
@@ -330,106 +361,41 @@ public abstract class Middleware implements IResourceManager {
 		}
 	}
 
-	/*public int newCustomer(int xid) throws RemoteException
+	public int newCustomer(int xid) throws RemoteException, InvalidTransactionException, TransactionAbortedException
 	{
-        	Trace.info("RM::newCustomer(" + xid + ") called");
-		// Generate a globally unique ID for the new customer
-		int cid = Integer.parseInt(String.valueOf(xid) +
-			String.valueOf(Calendar.getInstance().get(Calendar.MILLISECOND)) +
-			String.valueOf(Math.round(Math.random() * 100 + 1)));
-		Customer customer = new Customer(cid);
-		writeData(xid, customer.getKey(), customer);
-		Trace.info("RM::newCustomer(" + cid + ") returns ID=" + cid);
-		return cid;
+		return txManager.newCustomer(xid);
 	}
 
-	public boolean newCustomer(int xid, int customerID) throws RemoteException
+	public boolean newCustomer(int xid, int customerID) throws RemoteException, InvalidTransactionException, TransactionAbortedException
 	{
-		Trace.info("RM::newCustomer(" + xid + ", " + customerID + ") called");
-		Customer customer = (Customer)readData(xid, Customer.getKey(customerID));
-		if (customer == null)
-		{
-			customer = new Customer(customerID);
-			writeData(xid, customer.getKey(), customer);
-			Trace.info("RM::newCustomer(" + xid + ", " + customerID + ") created a new customer");
-			return true;
-		}
-		else
-		{
-			Trace.info("INFO: RM::newCustomer(" + xid + ", " + customerID + ") failed--customer already exists");
-			return false;
-		}
-	}*/
+		return txManager.newCustomer(xid, customerID);
+	}
 
-	public boolean deleteCustomer(int xid, int customerID) throws RemoteException
+	public boolean deleteCustomer(int xid, int customerID) throws RemoteException, InvalidTransactionException, TransactionAbortedException
 	{
-		Trace.info("RM::deleteCustomer(" + xid + ", " + customerID + ") called");
-		Customer customer = (Customer)readData(xid, Customer.getKey(customerID));
-		if (customer == null)
-		{
-			Trace.warn("RM::deleteCustomer(" + xid + ", " + customerID + ") failed--customer doesn't exist");
-			return false;
-		}
-		else
-		{            
-			// Increase the reserved numbers of all reservable items which the customer reserved. 
- 			RMHashMap reservations = customer.getReservations();
-			for (String reservedKey : reservations.keySet())
-			{        
-				ReservedItem reserveditem = customer.getReservedItem(reservedKey);
-				Trace.info("RM::deleteCustomer(" + xid + ", " + customerID + ") has reserved " + reserveditem.getKey() + " " +  reserveditem.getCount() +  " times");
-				
-				if (reservedKey.startsWith("flight")){
-					ReservableItem item  = (ReservableItem)m_flightsManager.getItem(xid, reserveditem.getKey());
-					Trace.info("RM::deleteCustomer(" + xid + ", " + customerID + ") has reserved " + reserveditem.getKey() + " which is reserved " +  item.getReserved() +  " times and is still available " + item.getCount() + " times");
-					item.setReserved(item.getReserved() - reserveditem.getCount());
-					item.setCount(item.getCount() + reserveditem.getCount());
-					m_flightsManager.putItem(xid, item.getKey(), item);
-				}
-				else if (reservedKey.startsWith("car")){
-					ReservableItem item  = (ReservableItem)m_carsManager.getItem(xid, reserveditem.getKey());
-					Trace.info("RM::deleteCustomer(" + xid + ", " + customerID + ") has reserved " + reserveditem.getKey() + " which is reserved " +  item.getReserved() +  " times and is still available " + item.getCount() + " times");
-					item.setReserved(item.getReserved() - reserveditem.getCount());
-					item.setCount(item.getCount() + reserveditem.getCount());
-					m_carsManager.putItem(xid, item.getKey(), item);
-				}
-				else {
-					ReservableItem item  = (ReservableItem)m_roomsManager.getItem(xid, reserveditem.getKey());
-					Trace.info("RM::deleteCustomer(" + xid + ", " + customerID + ") has reserved " + reserveditem.getKey() + " which is reserved " +  item.getReserved() +  " times and is still available " + item.getCount() + " times");
-					item.setReserved(item.getReserved() - reserveditem.getCount());
-					item.setCount(item.getCount() + reserveditem.getCount());
-					m_roomsManager.putItem(xid, item.getKey(), item);
-				}
-				
-			}
-
-			// Remove the customer from the storage
-			removeData(xid, customer.getKey());
-			Trace.info("RM::deleteCustomer(" + xid + ", " + customerID + ") succeeded");
-			return true;
-		}
+		return txManager.deleteCustomer(xid, customerID);
 	}
 
 	// Adds flight reservation to this customer
-	/*public boolean reserveFlight(int xid, int customerID, int flightNum) throws RemoteException
+	public boolean reserveFlight(int xid, int customerID, int flightNum) throws RemoteException, InvalidTransactionException, TransactionAbortedException
 	{
-		return reserveItem(xid, customerID, Flight.getKey(flightNum), String.valueOf(flightNum));
-	}*/
+		return txManager.reserveFlight(xid, customerID, flightNum);
+	}
 
 	// Adds car reservation to this customer
-	public boolean reserveCar(int xid, int customerID, String location) throws RemoteException
+	public boolean reserveCar(int xid, int customerID, String location) throws RemoteException, InvalidTransactionException, TransactionAbortedException
 	{
-		return reserveItem(xid, customerID, Car.getKey(location), location);
+		return txManager.reserveCar(xid, customerID, location);
 	}
 
 	// Adds room reservation to this customer
-	public boolean reserveRoom(int xid, int customerID, String location) throws RemoteException
+	public boolean reserveRoom(int xid, int customerID, String location) throws RemoteException, InvalidTransactionException, TransactionAbortedException
 	{
-		return reserveItem(xid, customerID, Room.getKey(location), location);
+		return txManager.reserveRoom(xid, customerID, location);
 	}
 
 	// Reserve bundle 
-	public boolean bundle(int xid, int customerID, Vector<String> flightNumbers, String location, boolean car, boolean room) throws RemoteException
+	public boolean bundle(int xid, int customerID, Vector<String> flightNumbers, String location, boolean car, boolean room) throws RemoteException, NumberFormatException, InvalidTransactionException, TransactionAbortedException
 	{
 		Trace.info("RM::bundle(" + xid + ", " + customerID + ", " + flightNumbers + ", " + location + ", " + car + ", " + room + ") called");
 		Customer customer = (Customer)readData(xid, Customer.getKey(customerID));
@@ -461,5 +427,16 @@ public abstract class Middleware implements IResourceManager {
 	public String getName() throws RemoteException
 	{
 		return m_name;
+	}
+	public void shutdownFlights() throws RemoteException {
+		m_flightsManager.shutdown();
+	}
+	
+	public void shutdownCars() throws RemoteException {
+		m_carsManager.shutdown();		
+	}
+	
+	public void shutdownRooms() throws RemoteException {
+		m_roomsManager.shutdown();		
 	}
 }

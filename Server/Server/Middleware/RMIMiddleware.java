@@ -12,7 +12,7 @@ import Server.Interface.*;
 import Server.Common.*;
 
 
-public class RMIMiddleware extends TransactionManager {
+public class RMIMiddleware extends Middleware {
 	
 	private static String s_serverName = "Middleware";
 	private static String s_rmiPrefix = "group33";
@@ -149,14 +149,5 @@ public class RMIMiddleware extends TransactionManager {
 			System.exit(1);
 		}
 	}
-	
-
-
-
-
-
-	
-	
-	
 
 }

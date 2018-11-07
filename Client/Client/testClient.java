@@ -68,7 +68,7 @@ public abstract class testClient
 		}
 	}
 
-	public void execute(TestCommand cmd, Vector<String> arguments) throws RemoteException, NumberFormatException
+	public void execute(TestCommand cmd, Vector<String> arguments) throws RemoteException, NumberFormatException, InvalidTransactionException, TransactionAbortedException
 	{
 		switch (cmd)
 		{

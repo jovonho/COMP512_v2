@@ -3,8 +3,10 @@ package Client;
 public enum Command {
 	Help("List all available commands", "[CommandName]"),
 
-	Start("Returns the xid for the transaction", ""),
+	Start("Starts a new Transaction and returns a transaction id", ""),
 	Commit("Commits the data to the right resource managers", "<xid>"),
+	Abort("Aborts a transaction", "<xid>"),
+	Shutdown("Shuts down the system",""),
 
 	AddFlight("Add a new flight number", "<xid>,<FlightNumber>,<NumberOfSeats>,<PricePerSeat>"),
 	AddCars("Add a new car location", "<xid>,<Location>,<NumberOfCar>,<Price>"),

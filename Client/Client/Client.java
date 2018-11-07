@@ -62,6 +62,12 @@ public abstract class Client
 			catch (ConnectException|UnmarshalException e) {
 				System.err.println((char)27 + "[31;1mCommand exception: " + (char)27 + "[0mConnection to server lost");
 			}
+			catch (InvalidTransactionException e) {
+				System.err.println((char)27 + "[31;1mInvalid Transaction");
+			}
+			catch (TransactionAbortedException e) {
+				System.err.println((char)27 + "[31;1mTransaction was aborted");
+			}
 			catch (Exception e) {
 				System.err.println((char)27 + "[31;1mCommand exception: " + (char)27 + "[0mUncaught exception");
 				e.printStackTrace();
@@ -69,7 +75,7 @@ public abstract class Client
 		}
 	}
 
-	public void execute(Command cmd, Vector<String> arguments) throws RemoteException, NumberFormatException
+	public void execute(Command cmd, Vector<String> arguments) throws RemoteException, NumberFormatException, InvalidTransactionException, TransactionAbortedException
 	{
 		switch (cmd)
 		{
@@ -89,16 +95,34 @@ public abstract class Client
 			{
 				checkArgumentsCount(1, arguments.size());
 				System.out.println("You identifier for this transaction is:" + m_resourceManager.start());
-			}break;
+				break;
+			}
+			case Abort:
+			{
+				checkArgumentsCount(2, arguments.size());
+				m_resourceManager.abort(Integer.parseInt(arguments.elementAt(1)));
+				System.out.println("Transaction " + arguments.elementAt(1) + " aborted.");
+				break;
+			}
+			case Shutdown: {
+				m_resourceManager.shutdown();
+				System.out.println("Shutting Down");
+				System.exit(0);
+				break;
+			}
+			
 			case Commit:
 			{
 				checkArgumentsCount(2, arguments.size());
-				try{
-					System.out.println(m_resourceManager.commit(toInt(arguments.elementAt(1))));
-				}catch(TransactionAbortedException | InvalidTransactionException e ){
+				try
+				{
+					System.out.println(m_resourceManager.commit(Integer.parseInt(arguments.elementAt(1))));
+				}
+				catch(TransactionAbortedException | InvalidTransactionException e ){
 					System.out.println(e);
 				}
-			}break;
+				break;
+			}
 			case AddFlight: {
 				checkArgumentsCount(5, arguments.size());
 
