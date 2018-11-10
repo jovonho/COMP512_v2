@@ -105,22 +105,20 @@ public abstract class Client
 				break;
 			}
 			case Shutdown: {
-				m_resourceManager.shutdown();
-				System.out.println("Shutting Down");
-				System.exit(0);
+				try {
+					m_resourceManager.shutdown();
+					System.out.println("Shutting Down");
+				} catch (Exception e) {
+					System.exit(0);
+				}
 				break;
 			}
 			
 			case Commit:
 			{
 				checkArgumentsCount(2, arguments.size());
-				try
-				{
-					System.out.println(m_resourceManager.commit(Integer.parseInt(arguments.elementAt(1))));
-				}
-				catch(TransactionAbortedException | InvalidTransactionException e ){
-					System.out.println(e);
-				}
+				
+				System.out.println(m_resourceManager.commit(Integer.parseInt(arguments.elementAt(1))));
 				break;
 			}
 			case AddFlight: {
@@ -445,11 +443,17 @@ public abstract class Client
 				String location = arguments.elementAt(arguments.size()-3);
 				boolean car = toBoolean(arguments.elementAt(arguments.size()-2));
 				boolean room = toBoolean(arguments.elementAt(arguments.size()-1));
+				//System.out.println("car, rooms to boolean gives: " + car + ", " + room);
 
-				if (m_resourceManager.bundle(id, customerID, flightNumbers, location, car, room)) {
-					System.out.println("Bundle Reserved");
-				} else {
-					System.out.println("Bundle could not be reserved");
+				try {
+					if (m_resourceManager.bundle(id, customerID, flightNumbers, location, car, room)) {
+						System.out.println("Bundle Reserved");
+					} else {
+						System.out.println("Bundle could not be reserved");
+					}
+				} catch (Exception e) {
+					// TODO Auto-generated catch block
+					e.printStackTrace();
 				}
 				break;
 			}

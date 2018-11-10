@@ -29,10 +29,15 @@ public class ResourceManager implements IResourceManager
 	public void putItem(int xid, String key, RMItem value) {
 		Trace.info("Object: " + key +" was added");
 		if(value instanceof Flight) Trace.info("Seats: " + ((Flight)value).getCount());
+		if(value instanceof Room) Trace.info("Available rooms: " + ((Room)value).getCount());
+		if(value instanceof Car) Trace.info("Available cars: " + ((Car)value).getCount());
+		
 		writeData(xid, key, value);
 	}
 
 	public void deleteData(int xid, String key){
+		
+		Trace.info(key + " deleted");
 		removeData(xid, key);
 	}
 
@@ -43,8 +48,6 @@ public class ResourceManager implements IResourceManager
 		synchronized(m_data) {
 			RMItem item = m_data.get(key);
 			if (item != null) {
-				System.out.println("in readData");
-				System.out.println("item:" + item.toString());
 				return (RMItem)item.clone();
 			}
 			return null;

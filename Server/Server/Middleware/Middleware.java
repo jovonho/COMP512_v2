@@ -8,7 +8,7 @@ import java.util.Vector;
 
 import Server.Interface.InvalidTransactionException;
 import Server.Interface.TransactionAbortedException;
-
+import Server.LockManager.DeadlockException;
 import Server.Common.*;
 
 /**
@@ -314,51 +314,38 @@ public abstract class Middleware implements IResourceManager {
 	}
 
 	// Returns the number of cars available at a location
-	public int queryCars(int xid, String location) throws RemoteException
+	public int queryCars(int xid, String location) throws RemoteException, InvalidTransactionException, TransactionAbortedException
 	{
-		return 0;
+		return txManager.queryCars(xid, location);
 	}
 
 	// Returns the amount of rooms available at a location
-	public int queryRooms(int xid, String location) throws RemoteException
+	public int queryRooms(int xid, String location) throws RemoteException, InvalidTransactionException, TransactionAbortedException
 	{
-		return 0;
+		return txManager.queryRooms(xid, location);
 	}
 
 	// Returns price of a seat in this flight
-	public int queryFlightPrice(int xid, int flightNum) throws RemoteException
+	public int queryFlightPrice(int xid, int flightNum) throws RemoteException, InvalidTransactionException, TransactionAbortedException
 	{
-		return 0;
+		return txManager.queryFlightPrice(xid, flightNum);
 	}
 
 	// Returns price of cars at this location
-	public int queryCarsPrice(int xid, String location) throws RemoteException
+	public int queryCarsPrice(int xid, String location) throws RemoteException, InvalidTransactionException, TransactionAbortedException
 	{
-		return 0;
+		return txManager.queryCarsPrice(xid, location);
 	}
 
 	// Returns room price at this location
-	public int queryRoomsPrice(int xid, String location) throws RemoteException
+	public int queryRoomsPrice(int xid, String location) throws RemoteException, InvalidTransactionException, TransactionAbortedException
 	{
-		return 0;
+		return txManager.queryRoomsPrice(xid, location);
 	}
 
-	public String queryCustomerInfo(int xid, int customerID) throws RemoteException
+	public String queryCustomerInfo(int xid, int customerID) throws RemoteException, InvalidTransactionException, TransactionAbortedException
 	{
-		Trace.info("RM::queryCustomerInfo(" + xid + ", " + customerID + ") called");
-		Customer customer = (Customer)readData(xid, Customer.getKey(customerID));
-		if (customer == null)
-		{
-			Trace.warn("RM::queryCustomerInfo(" + xid + ", " + customerID + ") failed--customer doesn't exist");
-			// NOTE: don't change this--WC counts on this value indicating a customer does not exist...
-			return "";
-		}
-		else
-		{
-			Trace.info("RM::queryCustomerInfo(" + xid + ", " + customerID + ")");
-			System.out.println(customer.getBill());
-			return customer.getBill();
-		}
+		return txManager.queryCustomerInfo(xid, customerID);
 	}
 
 	public int newCustomer(int xid) throws RemoteException, InvalidTransactionException, TransactionAbortedException
@@ -397,31 +384,7 @@ public abstract class Middleware implements IResourceManager {
 	// Reserve bundle 
 	public boolean bundle(int xid, int customerID, Vector<String> flightNumbers, String location, boolean car, boolean room) throws RemoteException, NumberFormatException, InvalidTransactionException, TransactionAbortedException
 	{
-		Trace.info("RM::bundle(" + xid + ", " + customerID + ", " + flightNumbers + ", " + location + ", " + car + ", " + room + ") called");
-		Customer customer = (Customer)readData(xid, Customer.getKey(customerID));
-		
-		if (customer == null)
-		{
-			Trace.warn("RM::bundle(" + xid + ", " + customerID + ", " + flightNumbers + ", " + location + ", " + car + ", " + room + ") failed--customer doesn't exist");
-			return false;
-		}
-		else
-		{
-			for (String num : flightNumbers) 
-			{
-				reserveFlight(xid, customerID, Integer.parseInt(num));
-			}
-			if (car) 
-			{
-				reserveCar(xid, customerID, location);
-			}
-			if (room) 
-			{
-				reserveRoom(xid, customerID, location);
-			}
-		}
-		
-		return true;
+		return txManager.bundle(xid, customerID, flightNumbers, location, car, room);
 	}
 
 	public String getName() throws RemoteException

@@ -4,6 +4,8 @@ import java.rmi.Remote;
 import java.rmi.RemoteException;
 
 import Server.Common.*;
+import Server.LockManager.DeadlockException;
+
 import java.util.*;
 
 /** 
@@ -166,49 +168,61 @@ public interface IResourceManager extends Remote
      * Query the status of a car location.
      *
      * @return Number of available cars at this location
+     * @throws TransactionAbortedException 
+     * @throws InvalidTransactionException 
      */
     public int queryCars(int id, String location) 
-	throws RemoteException; 
+	throws RemoteException, InvalidTransactionException, TransactionAbortedException; 
 
     /**
      * Query the status of a room location.
      *
      * @return Number of available rooms at this location
+     * @throws TransactionAbortedException 
+     * @throws InvalidTransactionException 
      */
     public int queryRooms(int id, String location) 
-	throws RemoteException; 
+	throws RemoteException, InvalidTransactionException, TransactionAbortedException; 
 
     /**
      * Query the customer reservations.
      *
      * @return A formatted bill for the customer
+     * @throws TransactionAbortedException 
+     * @throws InvalidTransactionException 
      */
     public String queryCustomerInfo(int id, int customerID) 
-	throws RemoteException; 
+	throws RemoteException, InvalidTransactionException, TransactionAbortedException; 
     
     /**
      * Query the status of a flight.
      *
      * @return Price of a seat in this flight
+     * @throws TransactionAbortedException 
+     * @throws InvalidTransactionException 
      */
     public int queryFlightPrice(int id, int flightNumber) 
-	throws RemoteException; 
+	throws RemoteException, InvalidTransactionException, TransactionAbortedException; 
 
     /**
      * Query the status of a car location.
      *
      * @return Price of car
+     * @throws TransactionAbortedException 
+     * @throws InvalidTransactionException 
      */
     public int queryCarsPrice(int id, String location) 
-	throws RemoteException; 
+	throws RemoteException, InvalidTransactionException, TransactionAbortedException; 
 
     /**
      * Query the status of a room location.
      *
      * @return Price of a room
+     * @throws TransactionAbortedException 
+     * @throws InvalidTransactionException 
      */
     public int queryRoomsPrice(int id, String location) 
-	throws RemoteException; 
+	throws RemoteException, InvalidTransactionException, TransactionAbortedException; 
 
     /**
      * Reserve a seat on this flight.
@@ -247,6 +261,7 @@ public interface IResourceManager extends Remote
      * @throws TransactionAbortedException 
      * @throws InvalidTransactionException 
      * @throws NumberFormatException 
+     * @throws DeadlockException 
      */
     public boolean bundle(int id, int customerID, Vector<String> flightNumbers, String location, boolean car, boolean room)
 	throws RemoteException, NumberFormatException, InvalidTransactionException, TransactionAbortedException; 
