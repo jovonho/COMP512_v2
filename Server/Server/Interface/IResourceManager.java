@@ -273,4 +273,6 @@ public interface IResourceManager extends Remote
      */
     public String getName()
         throws RemoteException;
+
+	public void start(int xid) throws RemoteException;
 }

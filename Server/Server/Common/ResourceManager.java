@@ -6,6 +6,7 @@
 package Server.Common;
 
 import Server.Interface.*;
+import Server.Middleware.Middleware;
 
 import java.util.*;
 import java.rmi.RemoteException;
@@ -15,11 +16,82 @@ public class ResourceManager implements IResourceManager
 {
 	protected String m_name = "";
 	protected RMHashMap m_data = new RMHashMap();
+	
+	// Maps transaction IDs to the keys of objects it has accessed
+	private Map<Integer, ArrayList<String>> transactionMap = new HashMap<>();
+	// Maps transaction IDs to keys of deleted objects
+	private Map<Integer, ArrayList<String>> toDeleteMap = new HashMap<>();
+	
+	// Maps keys to RMItems
+	protected RMHashMap localCopies = new RMHashMap();
+	
 
 	public ResourceManager(String p_name)
 	{
 		m_name = p_name;
 	}
+	
+	public int start() throws RemoteException 
+	{
+		return 1;
+	}	
+	
+	public void start(int xid) {
+		transactionMap.put(xid, new ArrayList<String>());
+		toDeleteMap.put(xid, new ArrayList<String>());
+	}
+
+	public boolean commit(int xid) throws RemoteException, TransactionAbortedException, InvalidTransactionException{
+		return false;
+	}
+	
+	@Override
+	public void abort(int xid) throws RemoteException, InvalidTransactionException {
+		// TODO Auto-generated method stub
+	}
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	protected RMItem readDataCopy(int xid, String key)
+	{
+		synchronized(localCopies) {
+			RMItem item = localCopies.get(key);
+			if (item != null) {
+				return (RMItem)item.clone();
+			}
+			return null;
+		}
+	}
+
+
+	protected void writeDataCopy(int xid, String key, RMItem value)
+	{
+		synchronized(localCopies) {
+			localCopies.put(key, value);
+		}
+	}
+
+	protected void removeDataCopy(int xid, String key)
+	{
+		synchronized(localCopies) {
+			localCopies.remove(key);
+		}
+	}
+	
+	
+	
+	
+	
+	
+	
+	
+	
 	
 	public RMItem getItem(int xid, String key) {
 		return readData(xid, key);
@@ -53,7 +125,6 @@ public class ResourceManager implements IResourceManager
 			return null;
 		}
 	}
-
 
 
 	// Writes a data item
@@ -99,7 +170,7 @@ public class ResourceManager implements IResourceManager
 		}
 	}
 
-	// Query the number of available seats/rooms/cars
+	// Query the number of available seats/rooms/carsR
 	protected int queryNum(int xid, String key)
 	{
 		Trace.info("RM::queryNum(" + xid + ", " + key + ") called");
@@ -171,26 +242,56 @@ public class ResourceManager implements IResourceManager
 	public boolean addFlight(int xid, int flightNum, int flightSeats, int flightPrice) throws RemoteException
 	{
 		Trace.info("RM::addFlight(" + xid + ", " + flightNum + ", " + flightSeats + ", $" + flightPrice + ") called");
-		Flight curObj = (Flight)readData(xid, Flight.getKey(flightNum));
-		if (curObj == null)
+		
+		// When adding a new flight, if it was previously marked for deletion, we cancel the deletion 
+		if(toDeleteMap.get(xid).contains("flight-"+flightNum))
 		{
-			// Doesn't exist yet, add it
-			Flight newObj = new Flight(flightNum, flightSeats, flightPrice);
-			writeData(xid, newObj.getKey(), newObj);
-			Trace.info("RM::addFlight(" + xid + ") created new flight " + flightNum + ", seats=" + flightSeats + ", price=$" + flightPrice);
+			toDeleteMap.get(xid).remove("flight-"+flightNum);
 		}
-		else
+		
+		// Trying to fetch the flight from our localCopy
+		Flight localObj = (Flight)readDataCopy(xid, Flight.getKey(flightNum));
+		
+		// If not in localCopy
+		if(localObj == null)
 		{
-			// Add seats to existing flight and update the price if greater than zero
-			curObj.setCount(curObj.getCount() + flightSeats);
+			// Get it from storage
+			Flight storedObj = (Flight) getItem(xid, "flight-"+flightNum);
+
+			// If we find it in storage
+			if(storedObj!=null)
+			{
+				storedObj.setCount(storedObj.getCount()+flightSeats);
+				if(flightPrice>0) storedObj.setPrice(flightPrice);
+				
+				// Put the modified flight in local copy to be written to storage at commit time
+				writeDataCopy(xid, storedObj.getKey(), storedObj);
+				transactionMap.get(xid).add(storedObj.getKey());
+				Trace.info("Local copy write addFlight successful.");
+			}
+			// If not in storage, flight does not exist, so we create it
+			else
+			{
+				Flight newObj = new Flight(flightNum, flightSeats, flightPrice);
+				
+				//Write it to our local Copy so it will be added to storage at commit time
+				writeDataCopy(xid, newObj.getKey(), newObj);
+				transactionMap.get(xid).add(newObj.getKey());
+				Trace.info("Local copy added and write addFlight successful.");
+			}
+		}
+		// If already in local Copy, update it there
+		else	
+		{	
+			localObj.setCount(localObj.getCount() + flightSeats);
 			if (flightPrice > 0)
 			{
-				curObj.setPrice(flightPrice);
+				localObj.setPrice(flightPrice);
 			}
-			writeData(xid, curObj.getKey(), curObj);
-			Trace.info("RM::addFlight(" + xid + ") modified existing flight " + flightNum + ", seats=" + curObj.getCount() + ", price=$" + flightPrice);
+			writeDataCopy(xid, localObj.getKey(), localObj);
+			Trace.info("Local copy added and write addFlight successful.");
 		}
-		return true;
+		return true;	
 	}
 
 	// Create a new car location or add cars to an existing location
@@ -409,20 +510,6 @@ public class ResourceManager implements IResourceManager
 	}
 	
 	
-
-	public int start() throws RemoteException{
-		return 0;
-	}
-
-	public boolean commit(int xid) throws RemoteException, TransactionAbortedException, InvalidTransactionException{
-		return false;
-	}
-	
-	@Override
-	public void abort(int xid) throws RemoteException, InvalidTransactionException {
-		// TODO Auto-generated method stub
-		
-	}
 
 	@Override
 	public void shutdown() throws RemoteException {

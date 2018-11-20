@@ -44,8 +44,11 @@ public abstract class Middleware implements IResourceManager {
 		txManager = new TransactionManager(this);
 	}
 	
-	public int start() {
+	public int start() throws RemoteException {
 		return txManager.start();
+	}
+	
+	public void start(int xid) throws RemoteException{
 	}
 	
 	public void abort(int xid) throws InvalidTransactionException {

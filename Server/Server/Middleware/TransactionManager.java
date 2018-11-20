@@ -44,9 +44,10 @@ public class TransactionManager {
 	}
 	
 
-	public int start() {
+	public int start() throws RemoteException {
 		int xid = ++xidCounter;
 		transactions.add(xid);
+		
 		txMap.put(xid, new ArrayList<String>());
 		toDeleteMap.put(xid, new ArrayList<String>());
 		
@@ -67,7 +68,7 @@ public class TransactionManager {
 		
 		transactionTimers.put(xid, timer);
 		Trace.info("TM::start() Transaction " + xid + " started");
-		
+		Middleware.m_flightsManager.start(xid);
 		return xid;
 	}
 	
@@ -198,39 +199,14 @@ public class TransactionManager {
 	{
 		checkValid(xid);
 		cancelTimer(xid);
-		try{
-			if(toDeleteMap.get(xid).contains("flight-"+flightNum)){
-				toDeleteMap.get(xid).remove("flight-"+flightNum);
+		boolean success = false;
+		try
+		{
+			if(lockManager.Lock(xid, "flight-"+flightNum, TransactionLockObject.LockType.LOCK_WRITE)) {
+				success = Middleware.m_flightsManager.addFlight(xid, flightNum, flightSeats, flightPrice);				
 			}
-			if(lockManager.Lock(xid, "flight-"+flightNum, TransactionLockObject.LockType.LOCK_WRITE)){
-				Flight curObj = (Flight)readDataCopy(xid, Flight.getKey(flightNum));
-				if(curObj == null){
-					
-					Flight remoteObj = (Flight) Middleware.m_flightsManager.getItem(xid, "flight-"+flightNum);
-
-					if(remoteObj!=null){
-						remoteObj.setCount(remoteObj.getCount()+flightSeats);
-						if(flightPrice>0) remoteObj.setPrice(flightPrice);
-						writeDataCopy(xid, remoteObj.getKey(), remoteObj);
-						txMap.get(xid).add(remoteObj.getKey());
-						Trace.info("Local copy write addFlight successful.");
-					}
-					else{
-						Flight newObj = new Flight(flightNum, flightSeats, flightPrice);
-						writeDataCopy(xid, newObj.getKey(), newObj);
-						txMap.get(xid).add(newObj.getKey());
-						Trace.info("Local copy added and write addFlight successful.");
-					}
-				}
-				else{
-					curObj.setCount(curObj.getCount() + flightSeats);
-					if (flightPrice > 0){
-						curObj.setPrice(flightPrice);
-					}
-					writeDataCopy(xid, curObj.getKey(), curObj);
-					Trace.info("Local copy added and write addFlight successful.");
-				}
-			}
+			
+			// TODO Perhaps if success is false it means the flight Manager crashed and we can handle this here ??
 			
 		}catch(DeadlockException e){
 			abort(xid);
@@ -238,7 +214,7 @@ public class TransactionManager {
 			return false;
 		}
 		resetTimer(xid);
-		return true;
+		return success;
 	}
 
 	public boolean addCars(int xid, String location, int count, int price) throws RemoteException, InvalidTransactionException, TransactionAbortedException
