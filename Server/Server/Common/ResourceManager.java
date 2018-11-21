@@ -321,18 +321,34 @@ public class ResourceManager implements IResourceManager
 		
 	}    
 
+	// Updated - Milestone 3
 	// Query the price of an item
 	protected int queryPrice(int xid, String key)
 	{
-		Trace.info("RM::queryPrice(" + xid + ", " + key + ") called");
-		ReservableItem curObj = (ReservableItem)readData(xid, key);
-		int value = 0; 
-		if (curObj != null)
+		// Attempt to get the object from localCopy
+		ReservableItem curObj = (ReservableItem)readDataCopy(xid, key);
+		
+		if(curObj==null)
 		{
-			value = curObj.getPrice();
+			// If not in local copy, attempt to get it from storage
+			ReservableItem storedObj = (ReservableItem) getItem(xid, key);
+			if(storedObj!=null)
+			{
+				// If found, put it in local copy and return count
+				writeDataCopy(xid, storedObj.getKey(), storedObj);
+				transactionMap.get(xid).add(storedObj.getKey());
+				return (storedObj.getPrice());
+			}
+			else
+			{
+				Trace.info(key + " not found in localCopy or storage");
+				return -1;
+			}
 		}
-		Trace.info("RM::queryPrice(" + xid + ", " + key + ") returns cost=$" + value);
-		return value;        
+		else
+		{
+			return (curObj.getPrice());
+		}      
 	}
 
 	// Reserve an item
