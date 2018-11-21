@@ -31,28 +31,87 @@ public class ResourceManager implements IResourceManager
 		m_name = p_name;
 	}
 	
+	// To satisfy the interface, real start method is start(int xid)
 	public int start() throws RemoteException 
 	{
 		return 1;
 	}	
 	
+	// Real start method
 	public void start(int xid) {
 		transactionMap.put(xid, new ArrayList<String>());
 		toDeleteMap.put(xid, new ArrayList<String>());
 	}
 
+	
+	// Updated - Milestone 3
+	/**
+	 * TODO: Think about toDelete not removing the items one by one
+	 */
 	public boolean commit(int xid) throws RemoteException, TransactionAbortedException, InvalidTransactionException{
-		return false;
+		
+		// Iterate through the items the transaction has created or modified and write them to storage.
+		for (String key : transactionMap.get(xid)) 
+		{
+			RMItem toCommit = readDataCopy(xid, key);
+			if (toCommit == null) {
+				break;
+			}
+			else {
+				putItem(xid, key, toCommit);
+			}
+			removeDataCopy(xid, key);
+		}
+		
+		// Iterate through the items the transaction marked for deletion and remove them from storage.
+		/**
+		 * Had to stop removing the items as we were iterating over the ArrayList because we would get the exception linked below.
+		 * Instead we simply remove the whole Arraylist once we're done deleting each item inside of it.
+		 * Could this cause errors with other transactions trying to do stuff concurrently?
+		 * see https://stackoverflow.com/questions/223918/iterating-through-a-collection-avoiding-concurrentmodificationexception-when-mo
+		 */
+		for (String key : toDeleteMap.get(xid)) {
+			if (key == null) {
+				break;
+			}
+			else {
+				System.out.println(key + " found in delete map, should be removed.");
+				removeData(xid, key);
+			}
+		}
+		
+		// Both the transactionMap and the toDeleteMap should be empty at this point -- possible check for debug
+		transactionMap.remove(xid);
+		toDeleteMap.remove(xid);
+		
+		Trace.info("Transaction-" + xid + " has committed at the RM");
+		return true;
 	}
 	
 	@Override
+	// Updated - Milestone 3
+	/**
+	 * 
+	 * TODO Can we really delete all items transaction accessed from the local copy?
+	 * If the transaction had created the item - yes, no other transaction depends on it.
+	 * If the item has a previous version in storage and transaction modified it, it will have a W lock on it so no other transaction can depend on it.
+	 * If the item was only read by the transaction, it's record in the local copy might be shared with other transactions. However, since they were only 
+	 * reads, we don't need to remember it's state. In this case, at commit time, RMItem toCommit would be null for the other transactions who have read 
+	 * that item and this case is handle in the commit method.
+	 */
+
 	public void abort(int xid) throws RemoteException, InvalidTransactionException {
-		// TODO Auto-generated method stub
+
+		// Remove all local copy objects associated with this transaction
+		for (String key : transactionMap.get(xid)) 
+		{
+			removeDataCopy(xid, key);
+		}
+		
+		// Remove the transaction's data structures
+		transactionMap.remove(xid);
+		toDeleteMap.remove(xid);
 	}
-	
-	
-	
-	
 	
 	
 	
@@ -143,45 +202,123 @@ public class ResourceManager implements IResourceManager
 		}
 	}
 
-	// Deletes the encar item
+	
+	// Updated - Milestone 3
+	/**
+	 * Case 1: The item is in both the storage and the local copy, that means it was modified by a current transaction but has a previous state in storage. 
+	 * In this case, we check if the local copy version (the most recent) has any reservations and if not, 
+	 * we remove it from the local copy and add it to the deleteMap so the previous version will be deleted at commit time.
+	 * 
+	 * Case 2: The item is only in the local copy, that means it was created by this transaction. In this case there is no previous version in storage and 
+	 * thus, we check if the local copy version has any reservation. If not we need only remove it from the local copy and not add anything to the 
+	 *  delete map (else we will get a null pointer exception at commit time).
+	 * 
+	 * Case 3: The item is only in storage then we don't need to touch the local copy and simply check if it has any reservations and if not 
+	 * add it to the delete map. The stored item will then be deleted at commit time.
+	 */
 	protected boolean deleteItem(int xid, String key)
 	{
 		Trace.info("RM::deleteItem(" + xid + ", " + key + ") called");
-		ReservableItem curObj = (ReservableItem)readData(xid, key);
-		// Check if there is such an item in the storage
-		if (curObj == null)
+		
+		// Attempt to get the item from storage
+		ReservableItem storedObj = (ReservableItem) readData(xid, key);
+		
+		// Attempt to get item from local copy
+		ReservableItem localObj = (ReservableItem) readDataCopy(xid, key);
+		
+		if (storedObj == null)
 		{
-			Trace.warn("RM::deleteItem(" + xid + ", " + key + ") failed--item doesn't exist");
-			return false;
+			if (localObj == null) 
+			{
+				Trace.warn("RM::deleteItem(" + xid + ", " + key + ") failed -- item doesn't exist");
+				return false;				
+			}
+			
+			else 
+			{
+				// This is case 2 -- item was created by the transaction; we must only remove the item from the local copy
+				if (localObj.getReserved() == 0 ) 
+				{
+					removeDataCopy(xid, key);
+					Trace.info("RM::deleteItem(" + xid + ", " + key + ") item deleted");
+					return true;
+				}
+				else 
+				{	
+					Trace.info("RM::deleteItem(" + xid + ", " + key + ") item can't be deleted because some customers have reserved it");
+					return false;
+				}
+			}
 		}
 		else
 		{
-			if (curObj.getReserved() == 0)
+			if (localObj != null)
 			{
-				removeData(xid, curObj.getKey());
-				Trace.info("RM::deleteItem(" + xid + ", " + key + ") item deleted");
-				return true;
+				// Case 1 -- item had previous version and was modified by the transaction
+				if (localObj.getReserved() == 0)
+				{
+					toDeleteMap.get(xid).add(key);
+					removeDataCopy(xid, localObj.getKey());
+					Trace.info("RM::deleteItem(" + xid + ", " + key + ") item marked for deletion");
+					return true;
+				}
+				else
+				{
+					Trace.info("RM::deleteItem(" + xid + ", " + key + ") item can't be deleted because some customers have reserved it");
+					return false;
+				}
+				
 			}
+			
 			else
 			{
-				Trace.info("RM::deleteItem(" + xid + ", " + key + ") item can't be deleted because some customers have reserved it");
-				return false;
+				// Case 3 -- item only in storage
+				if (storedObj.getReserved() == 0)
+				{
+					toDeleteMap.get(xid).add(key);
+					Trace.info("RM::deleteItem(" + xid + ", " + key + ") item marked for deletion");
+					return true;
+				}
+				else
+				{
+					Trace.info("RM::deleteItem(" + xid + ", " + key + ") item can't be deleted because some customers have reserved it");
+					return false;
+				}
 			}
 		}
 	}
 
-	// Query the number of available seats/rooms/carsR
+	
+	
+	// Updated - Milestone 3
+	// Query the number of available seats/rooms/cars
 	protected int queryNum(int xid, String key)
 	{
-		Trace.info("RM::queryNum(" + xid + ", " + key + ") called");
-		ReservableItem curObj = (ReservableItem)readData(xid, key);
-		int value = 0;  
-		if (curObj != null)
+		// Attempt to get the object from localCopy
+		ReservableItem curObj = (ReservableItem)readDataCopy(xid, key);
+		
+		if(curObj==null)
 		{
-			value = curObj.getCount();
+			// If not in local copy, attempt to get it from storage
+			ReservableItem storedObj = (ReservableItem) getItem(xid, key);
+			if(storedObj!=null)
+			{
+				// If found, put it in local copy and return count
+				writeDataCopy(xid, storedObj.getKey(), storedObj);
+				transactionMap.get(xid).add(storedObj.getKey());
+				return (storedObj.getCount());
+			}
+			else
+			{
+				Trace.info(key + " not found in localCopy or storage");
+				return -1;
+			}
 		}
-		Trace.info("RM::queryNum(" + xid + ", " + key + ") returns count=" + value);
-		return value;
+		else
+		{
+			return (curObj.getCount());
+		}
+		
 	}    
 
 	// Query the price of an item
@@ -247,6 +384,7 @@ public class ResourceManager implements IResourceManager
 		if(toDeleteMap.get(xid).contains("flight-"+flightNum))
 		{
 			toDeleteMap.get(xid).remove("flight-"+flightNum);
+			Trace.info("RM::Flight-"+flightNum+" was removed from toDeleteMap" );
 		}
 		
 		// Trying to fetch the flight from our localCopy
@@ -255,41 +393,46 @@ public class ResourceManager implements IResourceManager
 		// If not in localCopy
 		if(localObj == null)
 		{
-			// Get it from storage
+			Trace.info("Flight-"+flightNum+" not found in local Copy");
+			
+			// Attempt to get it from storage
 			Flight storedObj = (Flight) getItem(xid, "flight-"+flightNum);
 
 			// If we find it in storage
 			if(storedObj!=null)
 			{
+				Trace.info("Flight-"+flightNum+" found in storage");
 				storedObj.setCount(storedObj.getCount()+flightSeats);
 				if(flightPrice>0) storedObj.setPrice(flightPrice);
 				
 				// Put the modified flight in local copy to be written to storage at commit time
 				writeDataCopy(xid, storedObj.getKey(), storedObj);
 				transactionMap.get(xid).add(storedObj.getKey());
-				Trace.info("Local copy write addFlight successful.");
+				Trace.info("Flight-" + flightNum + " modified from storage, added to localCopy");
 			}
 			// If not in storage, flight does not exist, so we create it
 			else
 			{
+				Trace.info("Flight-" +flightNum + " not found in storage, creating new flight.");
 				Flight newObj = new Flight(flightNum, flightSeats, flightPrice);
 				
 				//Write it to our local Copy so it will be added to storage at commit time
 				writeDataCopy(xid, newObj.getKey(), newObj);
 				transactionMap.get(xid).add(newObj.getKey());
-				Trace.info("Local copy added and write addFlight successful.");
+				Trace.info("addFlight successful");
 			}
 		}
 		// If already in local Copy, update it there
 		else	
 		{	
+			Trace.info("Flight-" + flightNum + " found in localCopy");
 			localObj.setCount(localObj.getCount() + flightSeats);
 			if (flightPrice > 0)
 			{
 				localObj.setPrice(flightPrice);
 			}
 			writeDataCopy(xid, localObj.getKey(), localObj);
-			Trace.info("Local copy added and write addFlight successful.");
+			Trace.info("addFlight successful.");
 		}
 		return true;	
 	}

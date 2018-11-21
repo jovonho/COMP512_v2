@@ -28,7 +28,7 @@ public class TransactionManager {
 
 	protected RMHashMap m_dataCopy = new RMHashMap();
 
-	private Map<Integer, ArrayList<String>> txMap = new HashMap<>();
+	private Map<Integer, ArrayList<String>> transactionMap = new HashMap<>();
 	private Map<Integer, ArrayList<String>> toDeleteMap = new HashMap<>();
 	
 	private Map<Integer, Timer> transactionTimers = new HashMap<Integer, Timer>();
@@ -44,11 +44,17 @@ public class TransactionManager {
 	}
 	
 
+	// Updated - Milestone 3
+	/**
+	 * Transactions now exist at each resource manager. They will thus have an associated transaction map and to delete map at each RM, even if
+	 * they don't actually access any items from these RMs.
+	 * 
+	 */
 	public int start() throws RemoteException {
 		int xid = ++xidCounter;
 		transactions.add(xid);
 		
-		txMap.put(xid, new ArrayList<String>());
+		transactionMap.put(xid, new ArrayList<String>());
 		toDeleteMap.put(xid, new ArrayList<String>());
 		
 		Timer timer = new Timer();
@@ -59,7 +65,8 @@ public class TransactionManager {
 				try {
 					abort(xid);
 				} catch (InvalidTransactionException e) {
-					// TODO Auto-generated catch block
+					e.printStackTrace();
+				} catch (RemoteException e) {
 					e.printStackTrace();
 				}
 				abortedTransactions.add(xid);
@@ -67,28 +74,53 @@ public class TransactionManager {
 		}, TTL);
 		
 		transactionTimers.put(xid, timer);
-		Trace.info("TM::start() Transaction " + xid + " started");
+		
+		// NEW : We now call start on each resource manager
 		Middleware.m_flightsManager.start(xid);
+		Middleware.m_carsManager.start(xid);
+		Middleware.m_roomsManager.start(xid);
+		// See not in  abort
+		//customersManager.start(xid);
+		
+		Trace.info("TM::start() Transaction " + xid + " started");
 		return xid;
 	}
 	
-	public void abort(int xid) throws InvalidTransactionException {
-		if (!transactions.contains((Integer) xid)) {
-			//System.out.println("transactions does not contain tx");
+	// Updated - Milestone 3
+	/**
+	 * TODO: Problems with Middleware because it doesn't extend RM class it individually implements IResouceManager so we need
+	 * to copy paste these functions in the Middleware.
+	 * 
+	 * 
+	 * TODO: What about the aborted transactions list?
+	 * 
+	 * 
+	 * We now need to abort a transaction at each RM.
+	 * Abort could be called by client or by an expired timer.
+	 */
+	public void abort(int xid) throws InvalidTransactionException, RemoteException 
+	{
+		if (!transactions.contains(xid)) 
+		{
 			throw new InvalidTransactionException(xid, null);
 		}
 		else
 		{
-			//System.out.println("transaction does contain tx");
-			transactionTimers.get(xid).cancel();
-			transactionTimers.remove((Integer) xid);
+			// NEW
 			
-			for (String s : txMap.get(xid)) 
-			{
-				m_dataCopy.remove(s);
-			}
-			txMap.remove(xid);
+			transactionTimers.get(xid).cancel();
+			transactionTimers.remove(xid);
+			
+			Middleware.m_flightsManager.abort(xid);
+			Middleware.m_carsManager.abort(xid);
+			Middleware.m_roomsManager.abort(xid);
+			
+			//TODO 
+			//customersManager.abort(xid);
+			
+			
 			transactions.remove((Integer) xid);
+			transactionMap.remove(xid);
 			toDeleteMap.remove(xid);
 			lockManager.UnlockAll(xid);
 			
@@ -102,67 +134,36 @@ public class TransactionManager {
 		return false;
 	}
 
-	public boolean commit(int transactionId) throws RemoteException, InvalidTransactionException, TransactionAbortedException{
-		checkValid(transactionId);
-		cancelTimer(transactionId);
-
-		for(String s : txMap.get(transactionId)){
-			RMItem toSend = readDataCopy(transactionId, s);
-			Trace.info(s);
-			if(toSend == null){
-				break;
-			}
-			if(s.charAt(0) == 'f'){
-				Middleware.m_flightsManager.putItem(transactionId, ((Flight) toSend).getKey(), toSend);
-			}
-			else if(s.charAt(0) == 'c' && s.charAt(1) == 'a'){
-				Middleware.m_carsManager.putItem(transactionId, ((Car) toSend).getKey(), toSend);
-			}
-			else if(s.charAt(0) == 'r'){
-				Middleware.m_roomsManager.putItem(transactionId, ((Room) toSend).getKey(), toSend);
-			}
-			else if(s.charAt(0) == 'c' && s.charAt(1) == 'u'){
-				customersManager.putItem(transactionId, ((Customer)toSend).getKey(), toSend);
-			}	
-			m_dataCopy.remove(s);
-		}
-
-		//need deleteItem
-		for(String s : toDeleteMap.get(transactionId))
-		{
-			System.out.println("Iterating through deleteMap:\nCurrent key: " + s);
-			
-//			RMItem toDelete = readDataCopy(transactionId, s);
-			if (s == null) {
-				break;
-			}
-			if(s.charAt(0) == 'f'){
-				System.out.println("@commit time: flight found in toDeleteMap");
-				Middleware.m_flightsManager.deleteData(transactionId, s);
-			}
-			else if(s.charAt(0) == 'c' && s.charAt(1) == 'a'){
-				Middleware.m_carsManager.deleteData(transactionId, s);
-			}
-			else if(s.charAt(0) == 'r'){
-				Middleware.m_roomsManager.deleteData(transactionId, s);
-			}
-			else if(s.charAt(0) == 'c' && s.charAt(1) == 'u'){
-				System.out.println("attempt to delete customer at RM");
-				customersManager.deleteData(transactionId, s);
-			}	
-			m_dataCopy.remove(s);
-		}
+	// Updated - Milestone 3
+	// TODO Need support for Middleware -- see abort
+	public boolean commit(int xid) throws RemoteException, InvalidTransactionException, TransactionAbortedException
+	{
+		checkValid(xid);
+		cancelTimer(xid);
 		
-		transactionTimers.remove((Integer) transactionId);
-		transactions.remove((Integer) transactionId);
-		txMap.remove(transactionId);
-		toDeleteMap.remove(transactionId);
-		lockManager.UnlockAll(transactionId);
+		Middleware.m_flightsManager.commit(xid);
+		Middleware.m_carsManager.commit(xid);
+		Middleware.m_roomsManager.commit(xid);
 		
-		System.out.println("Transaction: " + transactionId + " has commited");
+		// See notes in abort
+		//customersManager.commit(xid);
+		
+		// NOTE: Need the cast to Integer to remove the actual Integer xid, else since xid is an int it will consider it an index
+		// This will lead to ArrayIndexOutOfBoundsException
+		transactions.remove((Integer) xid);
+		transactionMap.remove(xid);
+		toDeleteMap.remove(xid);
+		lockManager.UnlockAll(xid);
+		transactionTimers.remove(xid);
+		
+		System.out.println("Transaction: " + xid + " has commited");
 		return true;
 	}
 
+	
+	
+	
+	
 	protected RMItem readDataCopy(int xid, String key)
 	{
 		synchronized(m_dataCopy) {
@@ -193,8 +194,8 @@ public class TransactionManager {
 		removeDataCopy(xid, key);
 	}
 
-
-
+	
+	// Updated - Milestone 3
 	public boolean addFlight(int xid, int flightNum, int flightSeats, int flightPrice) throws RemoteException, InvalidTransactionException, TransactionAbortedException
 	{
 		checkValid(xid);
@@ -202,8 +203,14 @@ public class TransactionManager {
 		boolean success = false;
 		try
 		{
-			if(lockManager.Lock(xid, "flight-"+flightNum, TransactionLockObject.LockType.LOCK_WRITE)) {
+			if(lockManager.Lock(xid, "flight-"+flightNum, TransactionLockObject.LockType.LOCK_WRITE)) 
+			{
 				success = Middleware.m_flightsManager.addFlight(xid, flightNum, flightSeats, flightPrice);				
+			}
+			else
+			{
+				//lockManager.Lock() returns false for invalid parameters
+				Trace.info("Locking on flight-" + flightNum + " failed: invalid parameters.");
 			}
 			
 			// TODO Perhaps if success is false it means the flight Manager crashed and we can handle this here ??
@@ -237,13 +244,13 @@ public class TransactionManager {
 						remoteObj.setCount(remoteObj.getCount()+count);
 						if(price>0) remoteObj.setPrice(price);
 						writeDataCopy(xid, remoteObj.getKey(), remoteObj);
-						txMap.get(xid).add(remoteObj.getKey());
+						transactionMap.get(xid).add(remoteObj.getKey());
 						Trace.info("Local copy write addCars successful.");
 					}
 					else{
 						Car newObj = new Car(location, count, price);
 						writeDataCopy(xid, newObj.getKey(), newObj);
-						txMap.get(xid).add(newObj.getKey());
+						transactionMap.get(xid).add(newObj.getKey());
 						Trace.info("Local copy added and write addCars successful first.");
 					}
 				}
@@ -281,13 +288,13 @@ public class TransactionManager {
 						remoteObj.setCount(remoteObj.getCount()+count);
 						if(price>0) remoteObj.setCount(price);
 						writeDataCopy(xid, remoteObj.getKey(), remoteObj);
-						txMap.get(xid).add(remoteObj.getKey());
+						transactionMap.get(xid).add(remoteObj.getKey());
 						Trace.info("Local copy addRooms successful");
 					}
 					else{
 						Room newObj = new Room(location, count, price);
 						writeDataCopy(xid, newObj.getKey(), newObj);
-						txMap.get(xid).add(newObj.getKey());
+						transactionMap.get(xid).add(newObj.getKey());
 						Trace.info("Local copy added and write addRooms successful.");
 					}
 				}
@@ -321,7 +328,7 @@ public class TransactionManager {
 			if(lockManager.Lock(xid, "customer-"+cid, TransactionLockObject.LockType.LOCK_WRITE)){
 				Customer customer = new Customer(cid);
 				writeDataCopy(xid, customer.getKey(), customer);
-				txMap.get(xid).add(customer.getKey());
+				transactionMap.get(xid).add(customer.getKey());
 				Trace.info("Customer: " + cid + " has been written locally.");
 				resetTimer(xid);
 				return cid;
@@ -348,7 +355,7 @@ public class TransactionManager {
 					if(remoteCustomer==null){
 						Customer newCustomer = new Customer(customerId);
 						writeDataCopy(xid, newCustomer.getKey(), newCustomer);
-						txMap.get(xid).add(newCustomer.getKey());
+						transactionMap.get(xid).add(newCustomer.getKey());
 						Trace.info("New Customer: "+customerId+" was sucessfully created i Local copy.");
 						resetTimer(xid);
 						return true;
@@ -374,31 +381,21 @@ public class TransactionManager {
 		return true;
 	}
 
+	// Updated - Milestone 3
 	public int queryFlight(int xid, int flightNum) throws RemoteException, InvalidTransactionException, TransactionAbortedException
 	{
 		checkValid(xid);
 		cancelTimer(xid);
 		try{
-			if(lockManager.Lock(xid, "flight-"+flightNum, TransactionLockObject.LockType.LOCK_READ)){
-				Flight curObj = (Flight)readDataCopy(xid, "flight-"+flightNum);
-				if(curObj==null){
-					Flight remoteObj = (Flight) Middleware.m_flightsManager.getItem(xid, "flight-"+flightNum);
-					if(remoteObj!=null){
-						writeDataCopy(xid, remoteObj.getKey(), remoteObj);
-						txMap.get(xid).add(remoteObj.getKey());
-						resetTimer(xid);
-						return (remoteObj.getCount());
-					}
-					else{
-						Trace.info("Cannot find the flight with the flight number asked.");
-						resetTimer(xid);
-						return -1;
-					}
-				}
-				else{
-					resetTimer(xid);
-					return (curObj.getCount());
-				}
+			if(lockManager.Lock(xid, "flight-"+flightNum, TransactionLockObject.LockType.LOCK_READ))
+			{
+				resetTimer(xid);
+				return Middleware.m_flightsManager.queryFlight(xid, flightNum);
+			}
+			else 
+			{
+				//lockManager.Lock returns false for invalid parameters
+				Trace.info("Locking on flight-" + flightNum + " failed: invalid parameters.");
 			}
 
 		}catch(DeadlockException e){
@@ -427,7 +424,7 @@ public class TransactionManager {
 					Flight remoteObj = (Flight) Middleware.m_flightsManager.getItem(xid, "flight-"+flightNum);
 					if(remoteObj!=null){
 						writeDataCopy(xid, remoteObj.getKey(), remoteObj);
-						txMap.get(xid).add(remoteObj.getKey());
+						transactionMap.get(xid).add(remoteObj.getKey());
 						resetTimer(xid);
 						return (remoteObj.getPrice());
 					}
@@ -474,7 +471,7 @@ public class TransactionManager {
 					}
 					else{
 						writeDataCopy(xid, remoteObj.getKey(), remoteObj);
-						txMap.get(xid).add(remoteObj.getKey());
+						transactionMap.get(xid).add(remoteObj.getKey());
 						resetTimer(xid);
 						return (remoteObj.getCount());
 					}
@@ -517,7 +514,7 @@ public class TransactionManager {
 					}
 					else{
 						writeDataCopy(xid, remoteObj.getKey(), remoteObj);
-						txMap.get(xid).add(remoteObj.getKey());
+						transactionMap.get(xid).add(remoteObj.getKey());
 						resetTimer(xid);
 						return (remoteObj.getPrice());
 					}
@@ -561,7 +558,7 @@ public class TransactionManager {
 					}
 					else{
 						writeDataCopy(xid, remoteObj.getKey(), remoteObj);
-						txMap.get(xid).add(remoteObj.getKey());
+						transactionMap.get(xid).add(remoteObj.getKey());
 						resetTimer(xid);
 						return (remoteObj.getCount());
 					}
@@ -603,7 +600,7 @@ public class TransactionManager {
 					}
 					else{
 						writeDataCopy(xid, remoteObj.getKey(), remoteObj);
-						txMap.get(xid).add(remoteObj.getKey());
+						transactionMap.get(xid).add(remoteObj.getKey());
 						resetTimer(xid);
 						return (remoteObj.getPrice());
 					}
@@ -652,7 +649,7 @@ public class TransactionManager {
 						else
 						{
 							writeDataCopy(xid, r_customer.getKey(), r_customer);
-							txMap.get(xid).add(r_customer.getKey());
+							transactionMap.get(xid).add(r_customer.getKey());
 							resetTimer(xid);
 							return r_customer.getBill();
 						}
@@ -660,7 +657,7 @@ public class TransactionManager {
 					else 
 					{
 						writeDataCopy(xid, customer.getKey(), customer);
-						txMap.get(xid).add(customer.getKey());
+						transactionMap.get(xid).add(customer.getKey());
 						resetTimer(xid);
 						return customer.getBill();
 					}
@@ -699,7 +696,7 @@ public class TransactionManager {
 					}
 					else{
 						writeDataCopy(xid, remoteCustomer.getKey(), remoteCustomer);
-						txMap.get(xid).add(remoteCustomer.getKey());
+						transactionMap.get(xid).add(remoteCustomer.getKey());
 					}
 				}
 				Flight item = (Flight) readDataCopy(xid, "flight-"+flightNum);
@@ -712,7 +709,7 @@ public class TransactionManager {
 					}
 					else{
 						writeDataCopy(xid, remoteItem.getKey(), remoteItem);
-						txMap.get(xid).add(remoteItem.getKey());
+						transactionMap.get(xid).add(remoteItem.getKey());
 					}
 				}
 
@@ -768,7 +765,7 @@ public class TransactionManager {
 					}
 					else{
 						writeDataCopy(xid, remoteCustomer.getKey(), remoteCustomer);
-						txMap.get(xid).add(remoteCustomer.getKey());
+						transactionMap.get(xid).add(remoteCustomer.getKey());
 					}
 				}
 
@@ -782,7 +779,7 @@ public class TransactionManager {
 					}
 					else{
 						writeDataCopy(xid, remoteItem.getKey(), remoteItem);
-						txMap.get(xid).add(remoteItem.getKey());
+						transactionMap.get(xid).add(remoteItem.getKey());
 					}
 				}
 
@@ -837,7 +834,7 @@ public class TransactionManager {
 					}
 					else{
 						writeDataCopy(xid, remoteCustomer.getKey(), remoteCustomer);
-						txMap.get(xid).add(remoteCustomer.getKey());
+						transactionMap.get(xid).add(remoteCustomer.getKey());
 					}
 				}
 
@@ -851,7 +848,7 @@ public class TransactionManager {
 					}
 					else{
 						writeDataCopy(xid, remoteItem.getKey(), remoteItem);
-						txMap.get(xid).add(remoteItem.getKey());
+						transactionMap.get(xid).add(remoteItem.getKey());
 					}
 				}
 
@@ -891,64 +888,13 @@ public class TransactionManager {
 		checkValid(xid);
 		cancelTimer(xid);
 		
-		boolean inRM = false;
-		
 		try{
 			if(lockManager.Lock(xid, "flight-"+flightNum, TransactionLockObject.LockType.LOCK_WRITE))
 			{
-				Flight curObj = (Flight) readDataCopy(xid, "flight-"+flightNum);
-				if(curObj == null)
-				{
-					Flight remoteObj = (Flight) Middleware.m_flightsManager.getItem(xid, "flight-"+flightNum);
-					if(remoteObj == null)
-					{
-						Trace.warn("The item does not exist and thus cannot be deleted.");
-						resetTimer(xid);
-						return false;
-					}
-					else{
-						if(remoteObj.getReserved()==0){
-							inRM = true;
-							System.out.println("flight was not in LC, was found in RM and is added to deletemap");
-							toDeleteMap.get(xid).add(remoteObj.getKey());
-							txMap.get(xid).remove(remoteObj.getKey());
-							Trace.info("Flight: " + remoteObj.getKey()+" is added to delete map.");
-							resetTimer(xid);
-							return true;
-						}
-						else{
-							Trace.info("Flight: "+ remoteObj.getKey()+" cannot be deleted because someone has reserved it.");
-							resetTimer(xid);
-							return false;
-						}
-					}
-				}
-				else
-				{
-					Flight remoteObj = (Flight) Middleware.m_flightsManager.getItem(xid, "flight-"+flightNum);
-					if(remoteObj != null) {
-						inRM = true;
-					}
-					
-					if(curObj.getReserved()==0)
-					{
-						removeDataCopy(xid, curObj.getKey());
-						
-						if (inRM) {
-							toDeleteMap.get(xid).add(curObj.getKey());							
-						}
-						txMap.get(xid).remove(curObj.getKey());
-						m_dataCopy.remove(curObj.getKey());
-						Trace.info("Flight: " + curObj.getKey()+" is added to delete map and was deleted from local copy.");
-						resetTimer(xid);
-						return true;
-					}
-					else{
-						Trace.info("Flight: "+ curObj.getKey()+" cannot be deleted because someone has reserved it.");
-						resetTimer(xid);
-						return false;
-					}
-				}
+				return Middleware.m_flightsManager.deleteFlight(xid, flightNum);
+			}
+			else {
+				// Invalid Locking parameters.
 			}
 
 
@@ -980,7 +926,7 @@ public class TransactionManager {
 					else{
 						if(remoteObj.getReserved()==0){
 							toDeleteMap.get(xid).add(remoteObj.getKey());
-							txMap.get(xid).remove(remoteObj.getKey());
+							transactionMap.get(xid).remove(remoteObj.getKey());
 							Trace.info("Cars: " + remoteObj.getKey()+" is added to delete map.");
 							resetTimer(xid);
 							return true;
@@ -1003,7 +949,7 @@ public class TransactionManager {
 							System.out.println(curObj.getKey() + " is both in LC and RM");
 							toDeleteMap.get(xid).add(curObj.getKey());
 						}							
-						txMap.get(xid).remove(curObj.getKey());
+						transactionMap.get(xid).remove(curObj.getKey());
 						m_dataCopy.remove(curObj.getKey());
 						Trace.info("Cars: " + curObj.getKey()+" is added to delete map.");
 						resetTimer(xid);
@@ -1044,7 +990,7 @@ public class TransactionManager {
 					else{
 						if(remoteObj.getReserved()==0){
 							toDeleteMap.get(xid).add(remoteObj.getKey());
-							txMap.get(xid).remove(remoteObj.getKey());
+							transactionMap.get(xid).remove(remoteObj.getKey());
 							Trace.info("Rooms: " + remoteObj.getKey()+" is added to delete map.");
 							resetTimer(xid);
 							return true;
@@ -1067,7 +1013,7 @@ public class TransactionManager {
 						if (inRM) {
 							toDeleteMap.get(xid).add(curObj.getKey());							
 						}
-						txMap.get(xid).remove(curObj.getKey());
+						transactionMap.get(xid).remove(curObj.getKey());
 						m_dataCopy.remove(curObj.getKey());
 						Trace.info("Rooms: " + curObj.getKey()+" is added to delete map.");
 						resetTimer(xid);
@@ -1113,7 +1059,7 @@ public class TransactionManager {
 						System.out.println("Customer was found in RM");
 						inRM = true;
 						writeDataCopy(xid, remoteObj.getKey(), remoteObj);
-						txMap.get(xid).add(remoteObj.getKey());
+						transactionMap.get(xid).add(remoteObj.getKey());
 					}
 				}
 
@@ -1146,7 +1092,7 @@ public class TransactionManager {
 							}
 							else{
 								writeDataCopy(xid, remoteObj.getKey(), remoteObj);
-								txMap.get(xid).add(remoteObj.getKey());
+								transactionMap.get(xid).add(remoteObj.getKey());
 							}
 						}
 
@@ -1164,7 +1110,7 @@ public class TransactionManager {
 					toDeleteMap.get(xid).add(finalCustomer.getKey());					
 				}
 				removeDataCopy(xid, finalCustomer.getKey());
-				txMap.get(xid).remove(finalCustomer.getKey());
+				transactionMap.get(xid).remove(finalCustomer.getKey());
 				
 				resetTimer(xid);
 				return true;
@@ -1251,7 +1197,7 @@ public class TransactionManager {
 					}
 					else{
 						writeDataCopy(xid, remoteObj.getKey(), remoteObj);
-						txMap.get(xid).add(remoteObj.getKey());
+						transactionMap.get(xid).add(remoteObj.getKey());
 					}
 				}
 				
@@ -1304,7 +1250,7 @@ public class TransactionManager {
 					}
 					else{
 						writeDataCopy(xid, remoteObj.getKey(), remoteObj);
-						txMap.get(xid).add(remoteObj.getKey());
+						transactionMap.get(xid).add(remoteObj.getKey());
 						return (remoteObj.getCount());
 					}
 				}
@@ -1332,7 +1278,7 @@ public class TransactionManager {
 					Flight remoteObj = (Flight) Middleware.m_flightsManager.getItem(xid, "flight-"+flightNum);
 					if(remoteObj!=null){
 						writeDataCopy(xid, remoteObj.getKey(), remoteObj);
-						txMap.get(xid).add(remoteObj.getKey());
+						transactionMap.get(xid).add(remoteObj.getKey());
 						return (remoteObj.getCount());
 					}
 					else{
@@ -1373,7 +1319,7 @@ public class TransactionManager {
 					}
 					else{
 						writeDataCopy(xid, remoteCustomer.getKey(), remoteCustomer);
-						txMap.get(xid).add(remoteCustomer.getKey());
+						transactionMap.get(xid).add(remoteCustomer.getKey());
 					}
 				}
 				Flight item = (Flight) readDataCopy(xid, "flight-"+flightNum);
@@ -1385,7 +1331,7 @@ public class TransactionManager {
 					}
 					else{
 						writeDataCopy(xid, remoteItem.getKey(), remoteItem);
-						txMap.get(xid).add(remoteItem.getKey());
+						transactionMap.get(xid).add(remoteItem.getKey());
 					}
 				}
 
@@ -1437,7 +1383,7 @@ public class TransactionManager {
 					}
 					else{
 						writeDataCopy(xid, remoteObj.getKey(), remoteObj);
-						txMap.get(xid).add(remoteObj.getKey());
+						transactionMap.get(xid).add(remoteObj.getKey());
 						return (remoteObj.getCount());
 					}
 				}
@@ -1475,7 +1421,7 @@ public class TransactionManager {
 					}
 					else{
 						writeDataCopy(xid, remoteCustomer.getKey(), remoteCustomer);
-						txMap.get(xid).add(remoteCustomer.getKey());
+						transactionMap.get(xid).add(remoteCustomer.getKey());
 					}
 				}
 
@@ -1488,7 +1434,7 @@ public class TransactionManager {
 					}
 					else{
 						writeDataCopy(xid, remoteItem.getKey(), remoteItem);
-						txMap.get(xid).add(remoteItem.getKey());
+						transactionMap.get(xid).add(remoteItem.getKey());
 					}
 				}
 
@@ -1545,7 +1491,7 @@ public class TransactionManager {
 					}
 					else{
 						writeDataCopy(xid, remoteCustomer.getKey(), remoteCustomer);
-						txMap.get(xid).add(remoteCustomer.getKey());
+						transactionMap.get(xid).add(remoteCustomer.getKey());
 					}
 				}
 
@@ -1559,7 +1505,7 @@ public class TransactionManager {
 					}
 					else{
 						writeDataCopy(xid, remoteItem.getKey(), remoteItem);
-						txMap.get(xid).add(remoteItem.getKey());
+						transactionMap.get(xid).add(remoteItem.getKey());
 					}
 				}
 
@@ -1609,8 +1555,7 @@ public class TransactionManager {
 				try {
 					abort(xid);
 					abortedTransactions.add(xid);
-				} catch (InvalidTransactionException e) {
-					// TODO Auto-generated catch block
+				} catch (InvalidTransactionException | RemoteException e) {
 					e.printStackTrace();
 				}
 			}
@@ -1715,7 +1660,7 @@ public class TransactionManager {
 		}
 		
 		commit(xid);
-		System.out.println(txMap.get(xid));
+		System.out.println(transactionMap.get(xid));
 	}
 	
 	
