@@ -267,38 +267,17 @@ public class TransactionManager {
 	{
 		checkValid(xid);
 		cancelTimer(xid);
-		try{
-			if(toDeleteMap.get(xid).contains("car-"+location)){
-				toDeleteMap.get(xid).remove("car-"+location);
+		boolean success = false;
+		try
+		{
+			if(lockManager.Lock(xid, "car-"+location, TransactionLockObject.LockType.LOCK_WRITE))
+			{
+				success = Middleware.m_carsManager.addCars(xid, location, count, price);	
 			}
-
-			if(lockManager.Lock(xid, "car-"+location, TransactionLockObject.LockType.LOCK_WRITE)){
-				Car curObj = (Car) readDataCopy(xid, Car.getKey(location));
-				
-				if(curObj == null)
-				{
-					Car remoteObj = (Car) Middleware.m_carsManager.getItem(xid, "car-"+location);
-					if(remoteObj !=null)
-					{
-						remoteObj.setCount(remoteObj.getCount()+count);
-						if(price>0) remoteObj.setPrice(price);
-						writeDataCopy(xid, remoteObj.getKey(), remoteObj);
-						transactionMap.get(xid).add(remoteObj.getKey());
-						Trace.info("Local copy write addCars successful.");
-					}
-					else{
-						Car newObj = new Car(location, count, price);
-						writeDataCopy(xid, newObj.getKey(), newObj);
-						transactionMap.get(xid).add(newObj.getKey());
-						Trace.info("Local copy added and write addCars successful first.");
-					}
-				}
-				else{
-					curObj.setCount(curObj.getCount()+count);
-					if(price>0) curObj.setPrice(price);
-					writeDataCopy(xid, curObj.getKey(), curObj);
-					Trace.info("Local copy added and write addCars successful.");
-				}
+			else
+			{
+				//lockManager.Lock() returns false for invalid parameters
+				Trace.info("Locking on car-" + location + " failed: invalid parameters.");
 			}
 
 		}catch(DeadlockException e){
@@ -307,42 +286,19 @@ public class TransactionManager {
 			return false;
 		}
 		resetTimer(xid);
-		return true;	
+		return success;	
 	}
 
+	// signature: Adrian Koretski
 	public boolean addRooms(int xid, String location, int count, int price) throws RemoteException, InvalidTransactionException, TransactionAbortedException
 	{
 		checkValid(xid);
 		cancelTimer(xid);
+		boolean success = false;
 		try{
-			if(toDeleteMap.get(xid).contains("room-"+location)){
-				toDeleteMap.get(xid).remove("room-"+location);
-			}
-
-			if(lockManager.Lock(xid, "room-"+location, TransactionLockObject.LockType.LOCK_WRITE)){
-				Room curObj = (Room) readDataCopy(xid, Room.getKey(location));
-				if(curObj==null){
-					Room remoteObj = (Room) Middleware.m_roomsManager.getItem(xid, "room-"+location);
-					if(remoteObj!=null){
-						remoteObj.setCount(remoteObj.getCount()+count);
-						if(price>0) remoteObj.setCount(price);
-						writeDataCopy(xid, remoteObj.getKey(), remoteObj);
-						transactionMap.get(xid).add(remoteObj.getKey());
-						Trace.info("Local copy addRooms successful");
-					}
-					else{
-						Room newObj = new Room(location, count, price);
-						writeDataCopy(xid, newObj.getKey(), newObj);
-						transactionMap.get(xid).add(newObj.getKey());
-						Trace.info("Local copy added and write addRooms successful.");
-					}
-				}
-				else{
-					curObj.setCount(curObj.getCount()+count);
-					if(price>0) curObj.setPrice(price);
-					writeDataCopy(xid, curObj.getKey(), curObj);
-					Trace.info("Local copy added and write addRooms successful.");
-				}
+			if(lockManager.Lock(xid, "room-"+location, TransactionLockObject.LockType.LOCK_WRITE))
+			{
+				success = Middleware.m_carsManager.addCars(xid, location, count, price);
 			}
 		}catch(DeadlockException e){
 			abort(xid);
@@ -350,7 +306,7 @@ public class TransactionManager {
 			return false;
 		}
 		resetTimer(xid);
-		return true;
+		return success;
 	}
 	
 	
@@ -469,37 +425,22 @@ public class TransactionManager {
 		return -1;
 	}
 
+	// signature: Adrian Koretski
 	public int queryCars(int xid, String location) throws RemoteException, InvalidTransactionException, TransactionAbortedException
 	{
 		checkValid(xid);
 		cancelTimer(xid);
 		
 		try{
-			if(lockManager.Lock(xid, "car-"+location, TransactionLockObject.LockType.LOCK_READ)){
-				if(toDeleteMap.get(xid).contains("car-"+location)){
-					Trace.info("This car: "+ "car-"+location +" was deleted and cannot be accessed.");
-					resetTimer(xid);
-					return -1;
-				}
-				Car curObj = (Car)readDataCopy(xid, "car-"+location);
-				if(curObj==null){
-					Car remoteObj = (Car) Middleware.m_carsManager.getItem(xid, "car-"+location);
-					if(remoteObj==null){
-						Trace.info("Cannot find cars at the location asked.");
-						resetTimer(xid);
-						return -1;
-					}
-					else{
-						writeDataCopy(xid, remoteObj.getKey(), remoteObj);
-						transactionMap.get(xid).add(remoteObj.getKey());
-						resetTimer(xid);
-						return (remoteObj.getCount());
-					}
-				}
-				else{
-					resetTimer(xid);
-					return (curObj.getCount());
-				}
+			if(lockManager.Lock(xid, "car-"+location, TransactionLockObject.LockType.LOCK_READ))
+			{
+				resetTimer(xid);
+				return Middleware.m_carsManager.queryCars(xid, location);
+			}
+			else
+			{
+				//lockManager.Lock returns false for invalid parameters
+				Trace.info("Locking on car-" + location + " failed: invalid parameters.");
 			}
 		}catch(DeadlockException e){
 			abort(xid);
@@ -511,38 +452,21 @@ public class TransactionManager {
 	}
 	
 
-
+	// signature: Adrian Koretski
 	public int queryCarsPrice(int xid, String location) throws RemoteException, InvalidTransactionException, TransactionAbortedException
 	{
 		checkValid(xid);
 		cancelTimer(xid);
 	
 		try{
-			if(lockManager.Lock(xid, "car-"+location, TransactionLockObject.LockType.LOCK_READ)){
-				if(toDeleteMap.get(xid).contains("car-"+location)){
-					Trace.info("This car: "+ "car-"+location +" was deleted and cannot be accessed.");
-					resetTimer(xid);
-					return -1;
-				}
-				Car curObj = (Car)readDataCopy(xid, "car-"+location);
-				if(curObj==null){
-					Car remoteObj = (Car) Middleware.m_carsManager.getItem(xid, "car-"+location);
-					if(remoteObj==null){
-						Trace.info("Cannot find cars at the location asked.");
-						resetTimer(xid);
-						return -1;
-					}
-					else{
-						writeDataCopy(xid, remoteObj.getKey(), remoteObj);
-						transactionMap.get(xid).add(remoteObj.getKey());
-						resetTimer(xid);
-						return (remoteObj.getPrice());
-					}
-				}
-				else{
-					resetTimer(xid);
-					return (curObj.getPrice());
-				}
+			if(lockManager.Lock(xid, "car-"+location, TransactionLockObject.LockType.LOCK_READ))
+			{
+				resetTimer(xid);
+				return Middleware.m_carsManager.queryCarsPrice(xid, location);
+			}
+			else
+			{
+				Trace.info("Locking on car-" + location + " failed: invalid parameters.");
 			}
 		}catch(DeadlockException e){
 			abort(xid);
@@ -553,40 +477,22 @@ public class TransactionManager {
 		return -1;
 	}
 
-
-
+	// signature: Adrian Koretski
 	public int queryRooms(int xid, String location) throws RemoteException, InvalidTransactionException, TransactionAbortedException
 	{
 		checkValid(xid);
 		cancelTimer(xid);
 		
-		try {
-			if(lockManager.Lock(xid, "room-"+location, TransactionLockObject.LockType.LOCK_READ)){
-				if(toDeleteMap.get(xid).contains("room-"+location)){
-					Trace.info("This room: "+ "room-"+location +" was deleted and cannot be accessed.");
-					resetTimer(xid);
-					return -1;
-				}
-
-				Room curObj = (Room) readDataCopy(xid, "room-"+location);
-				if(curObj == null){
-					Room remoteObj = (Room) Middleware.m_roomsManager.getItem(xid, "room-"+location);
-					if(remoteObj == null){
-						Trace.info("Cannot find rooms at this location");
-						resetTimer(xid);
-						return -1;
-					}
-					else{
-						writeDataCopy(xid, remoteObj.getKey(), remoteObj);
-						transactionMap.get(xid).add(remoteObj.getKey());
-						resetTimer(xid);
-						return (remoteObj.getCount());
-					}
-				}
-				else{
-					resetTimer(xid);
-					return(curObj.getCount());
-				}
+		try
+		{
+			if(lockManager.Lock(xid, "room-"+location, TransactionLockObject.LockType.LOCK_READ))
+			{
+				resetTimer(xid);
+				return Middleware.m_carsManager.queryRooms(xid, location);
+			}
+			else
+			{
+				Trace.info("Locking on room-" + location + " failed: invalid parameters.");
 			}
 		}catch(DeadlockException e){
 			abort(xid);
@@ -603,32 +509,14 @@ public class TransactionManager {
 		cancelTimer(xid);
 		
 		try{
-			if(lockManager.Lock(xid, "room-"+location, TransactionLockObject.LockType.LOCK_READ)){
-				if(toDeleteMap.get(xid).contains("room-"+location)){
-					Trace.info("This room: "+ "room-"+location +" was deleted and cannot be accessed.");
-					resetTimer(xid);
-					return -1;
-				}
-
-				Room curObj = (Room) readDataCopy(xid, "room-"+location);
-				if(curObj == null){
-					Room remoteObj = (Room) Middleware.m_roomsManager.getItem(xid, "room-"+location);
-					if(remoteObj == null){
-						Trace.info("Cannot find rooms at this location");
-						resetTimer(xid);
-						return -1;
-					}
-					else{
-						writeDataCopy(xid, remoteObj.getKey(), remoteObj);
-						transactionMap.get(xid).add(remoteObj.getKey());
-						resetTimer(xid);
-						return (remoteObj.getPrice());
-					}
-				}
-				else{
-					resetTimer(xid);
-					return(curObj.getPrice());
-				}
+			if(lockManager.Lock(xid, "room-"+location, TransactionLockObject.LockType.LOCK_READ))
+			{
+				resetTimer(xid);
+				return Middleware.m_roomsManager.queryRoomsPrice(xid, location);
+			}
+			else
+			{
+				Trace.info("Locking on car-" + location + " failed: invalid parameters.");
 			}
 		}catch(DeadlockException e){
 			abort(xid);
@@ -695,7 +583,7 @@ public class TransactionManager {
 	}
 	
 	//Milestone 3
-	//update in progress
+	//updated
 	public boolean reserveFlight(int xid, int customerID, int flightNum) throws RemoteException, InvalidTransactionException, TransactionAbortedException{
 		checkValid(xid);
 		cancelTimer(xid);
@@ -752,7 +640,9 @@ public class TransactionManager {
 
 	}
 
-
+	//milestone 3
+	//update in progress
+	//check reserveflight comments for info
 	public boolean reserveCar(int xid, int customerID, String location) throws RemoteException, InvalidTransactionException, TransactionAbortedException
 	{
 		checkValid(xid);
@@ -779,35 +669,19 @@ public class TransactionManager {
 					}
 				}
 
-				Car item = (Car) readDataCopy(xid, "car-"+location);
-				if(item==null){
-					Car remoteItem = (Car) Middleware.m_carsManager.getItem(xid, "car-"+location);
-					if(remoteItem==null){
-						Trace.warn("The item we are trying to reserve does not exist in the local copy or in the remote Server. Failed reservation.");
-						resetTimer(xid);
-						return false;
-					}
-					else{
-						writeDataCopy(xid, remoteItem.getKey(), remoteItem);
-						transactionMap.get(xid).add(remoteItem.getKey());
-					}
-				}
-
-				Car finalItem = (Car) readDataCopy(xid, "car-"+location);
-				if(finalItem.getCount() == 0){
-					Trace.warn("The item we are trying to reserve has no more space available.");
+				if(!Middleware.m_carsManager.reserveCar(xid, customerID, location)){
+					Trace.info("Cars: " + "car-" + location + " does not exist or it is full, thus we cannot reserve it.");
 					resetTimer(xid);
 					return false;
 				}
 
 				Customer finalCustomer = (Customer) readDataCopy(xid, "customer-"+customerID);
 
+				Car finalItem = new Car(location, Middleware.m_carsManager.queryCars(xid, location), Middleware.m_carsManager.queryCarsPrice(xid, location));
+
 				finalCustomer.reserve("car-"+location, location, finalItem.getPrice());
 				writeDataCopy(xid, finalCustomer.getKey(), finalCustomer);
 
-				finalItem.setCount(finalItem.getCount() - 1);
-				finalItem.setReserved(finalItem.getReserved() + 1);
-				writeDataCopy(xid, finalItem.getKey(), finalItem);
 				Trace.info("Reservation succeeded:" +finalItem.getKey()+finalCustomer.getKey());
 				resetTimer(xid);
 				return true;
@@ -848,35 +722,21 @@ public class TransactionManager {
 					}
 				}
 
-				Room item = (Room) readDataCopy(xid, "room-"+location);
-				if(item==null){
-					Room remoteItem = (Room) Middleware.m_roomsManager.getItem(xid, "room-"+location);
-					if(remoteItem==null){
-						Trace.warn("The item we are trying to reserve does not exist in the local copy or in the remote Server. Failed reservation.");
-						resetTimer(xid);
-						return false;
-					}
-					else{
-						writeDataCopy(xid, remoteItem.getKey(), remoteItem);
-						transactionMap.get(xid).add(remoteItem.getKey());
-					}
-				}
-
-				Room finalItem = (Room) readDataCopy(xid, "room-"+location);
-				if(finalItem.getCount() == 0){
-					Trace.warn("The item we are trying to reserve has no more space available.");
+				if(!Middleware.m_roomsManager.reserveRoom(xid, customerID, location)){
+					Trace.warn("Rooms: "+ "room-"+location+" does not exist or it is full. Reservation failed.");
 					resetTimer(xid);
 					return false;
 				}
 
+
 				Customer finalCustomer = (Customer) readDataCopy(xid, "customer-"+customerID);
+
+				Room finalItem = new Room(location, Middleware.m_roomsManager.queryRooms(xid, location), Middleware.m_roomsManager.queryRoomsPrice(xid, location));
 
 				finalCustomer.reserve("room-"+location, location, finalItem.getPrice());
 				writeDataCopy(xid, finalCustomer.getKey(), finalCustomer);
 
-				finalItem.setCount(finalItem.getCount() - 1);
-				finalItem.setReserved(finalItem.getReserved() + 1);
-				writeDataCopy(xid, finalItem.getKey(), finalItem);
+				
 				Trace.info("Reservation succeeded:" +finalItem.getKey()+finalCustomer.getKey());
 				
 				resetTimer(xid);

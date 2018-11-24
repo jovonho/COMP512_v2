@@ -1,3 +1,3 @@
-grant codebase "file:/home/2015/ppacso/COMP512/Milestone3/Server/" {
+grant codebase "file:/home/2015/ppacso/COMP512/Milestone3/COMP512_v2/Server/" {
 permission java.security.AllPermission;
 };

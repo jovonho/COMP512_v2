@@ -651,7 +651,7 @@ public class ResourceManager implements IResourceManager
 		}
 	}
 
-	//milestone 3 update in prgress
+	//milestone 3 updated
 	// In resource manager, this function returns true if the flight exists in storage or in local copies and false otherwise or if the flight is full
 	//If it retruned true, then the reservation will go through and thus before returning, we update the numvber of seats and the number of reservation on this flight
 	public boolean reserveFlight(int xid, int customerID, int flightNum) throws RemoteException
@@ -659,6 +659,7 @@ public class ResourceManager implements IResourceManager
 		//check if flight was deleted. If it was deleted, we should not be able to access the flight or reserve it.
 		if(toDeleteMap.get(xid).contains("flight-"+flightNum)){
 			Trace.warn("Flight: "+ "lfight-" + flightNum + " was deleted and thus cannot be accessed.");
+			return false;
 		}
 
 		//search for the flight in local copies and in storage
@@ -693,13 +694,72 @@ public class ResourceManager implements IResourceManager
 	// Adds car reservation to this customer
 	public boolean reserveCar(int xid, int customerID, String location) throws RemoteException
 	{
-		return reserveItem(xid, customerID, Car.getKey(location), location);
+		if(toDeleteMap.get(xid).contains("car-"+location)){
+			Trace.warn("Cars: " + "car-" + location + " was deleted and thus cannot be accessed.");
+			return false;
+		}
+
+		Car item = (Car) readDataCopy(xid, "car-" + location);
+		if(item == null){
+			Car remoteItem = (Car) getItem(xid, "car-"+ location);
+			if(remoteItem == null){
+				Trace.warn("The item we are trying to reserve does not exist in the local copy or in the remote server. Failed reservation.");
+				return false;
+			}
+			else{
+				writeDataCopy(xid, remoteItem.getKey(), remoteItem);
+				transactionMap.get(xid).add(remoteItem.getKey());
+			}
+		}
+
+		Car finalItem = (Car) readDataCopy(xid, "car-"+location);
+		if(finalItem.getCount() == 0){
+			Trace.warn("Item we are trying to reserve is full. Reservation failed.");
+			return false;
+		}
+
+		finalItem.setCount(finalItem.getCount()-1);
+		finalItem.setReserved(finalItem.getReserved()+1);
+		writeDataCopy(xid, finalItem.getKey(), finalItem);
+		Trace.info("Reservation of the car at location: "+location +" successful");
+
+		return true;
 	}
 
 	// Adds room reservation to this customer
 	public boolean reserveRoom(int xid, int customerID, String location) throws RemoteException
 	{
-		return reserveItem(xid, customerID, Room.getKey(location), location);
+		if(toDeleteMap.get(xid).contains("room-"+location)){
+			Trace.warn("Rooms: " + "room-" + location + " was deleted and thus cannot be accessed.");
+			return false;
+		}
+
+		Room item = (Room) readDataCopy(xid, "room-"+location);
+		if(item==null){
+			Room remoteItem = (Room) getItem(xid, "room-"+location);
+			if(remoteItem == null){
+				Trace.warn("The item we are trying to reserve does not exist in the local copy or in the remote server. Failed reservation.");
+				return false;
+			}
+			else{
+				writeDataCopy(xid, remoteItem.getKey(), remoteItem);
+				transactionMap.get(xid).add(remoteItem.getKey());
+			}
+		}
+
+		Room finalItem = (Room) readDataCopy(xid, "room-"+location);
+		if(finalItem.getCount()==0){
+			Trace.warn("Item we are trying to reserve is full. Reservation failed.");
+			return false;
+		}
+
+		finalItem.setCount(finalItem.getCount()-1);
+		finalItem.setReserved(finalItem.getReserved()+1);
+		writeDataCopy(xid, finalItem.getKey(), finalItem);
+		Trace.info("Reservation of the room at location: "+location +" successful");
+
+		return true;
+
 	}
 
 	// Reserve bundle 
