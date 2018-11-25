@@ -9,10 +9,6 @@ import Server.LockManager.*;
 import Server.Middleware.TransactionManager;
 
 import java.util.*;
-
-import Server.Interface.InvalidTransactionException;
-import Server.Interface.TransactionAbortedException;
-
 import java.rmi.RemoteException;
 import java.io.*;
 
@@ -35,12 +31,13 @@ public class TransactionManager {
 	
 	private IResourceManager customersManager = null;
 	
+	
 
 	public TransactionManager(IResourceManager custs)
 	{
 		xidCounter = 0;
 		this.customersManager = custs;
-
+				
 	}
 	
 
@@ -162,7 +159,6 @@ public class TransactionManager {
 				break;
 			}
 			else {
-				System.out.println("ready to write customer" + toCommit);
 				customersManager.putItem(xid, key, toCommit);
 			}
 			Trace.info("@commit time: removing " + key + " from local copy");
@@ -181,10 +177,12 @@ public class TransactionManager {
 				break;
 			}
 			else {
-				System.out.println(key + " found in delete map, should be removed.");
+				Trace.info(key + " found in delete map, should be removed.");
 				customersManager.deleteData(xid, key);
 			}
 		}
+		
+		customersManager.storeMapPersistent();
 
 		
 		// NOTE: Need the cast to Integer to remove the actual Integer xid, else since xid is an int it will consider it an index
@@ -1396,20 +1394,6 @@ public class TransactionManager {
 	
 	public static void main(String[] args) {
 		
-		Middleware middleware = new RMIMiddleware("Middleware");
-		
-		middleware.m_flightsManager = new ResourceManager("Flights");
-		middleware.m_carsManager = new ResourceManager("Cars");
-		middleware.m_roomsManager = new ResourceManager("Rooms");
-		
-		TransactionManager TM = new TransactionManager(middleware);
-		
-		try {
-			TM.test3();
-		} 
-		catch (Exception e) {
-			e.printStackTrace();
-		}
 
 	}
 	

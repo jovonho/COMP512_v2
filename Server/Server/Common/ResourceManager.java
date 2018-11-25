@@ -25,7 +25,7 @@ public class ResourceManager implements IResourceManager
 	// Maps keys to RMItems
 	protected RMHashMap localCopies = new RMHashMap();
 	
-	//Rey
+	
 	private FileManager m_fileManager;
 	
 
@@ -95,10 +95,10 @@ public class ResourceManager implements IResourceManager
 		toDeleteMap.remove(xid);
 		
 		Trace.info("Transaction-" + xid + " has committed at the RM");
+		
 		try {
 			m_fileManager.writePersistentData(m_data);
 		} catch (Exception e) {
-			// TODO Auto-generated catch block
 			e.printStackTrace();
 		}
 		return true;
@@ -826,6 +826,12 @@ public class ResourceManager implements IResourceManager
 		writeDataCopy(xid, finalItem.getKey(), finalItem);
 		return true;
 
+	}
+
+	@Override
+	public void storeMapPersistent() throws RemoteException{
+		// TODO Auto-generated method stub
+		
 	}
 }
  

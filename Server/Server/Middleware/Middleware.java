@@ -22,12 +22,21 @@ public abstract class Middleware implements IResourceManager {
 	static IResourceManager m_roomsManager = null;
 	
 	static TransactionManager txManager = null;
+	
+	protected FileManager m_fileManager;
 
 
 	public Middleware(String p_name)
-	{
+	{   
 		m_name = p_name;
 		txManager = new TransactionManager(this);
+		m_fileManager = new FileManager(p_name);
+		
+		try {
+			m_data = m_fileManager.getPersistentData();
+		} catch (Exception e) {
+			e.printStackTrace();
+		}
 	}
 	
 	public int start() throws RemoteException {
@@ -57,6 +66,14 @@ public abstract class Middleware implements IResourceManager {
 	
 	public boolean commit(int transactionId) throws RemoteException, InvalidTransactionException, TransactionAbortedException {
 		return txManager.commit(transactionId);
+	}
+	
+	public void storeMapPersistent(){
+		try {
+			m_fileManager.writePersistentData(m_data);
+		} catch (Exception e) {
+			e.printStackTrace();
+		}
 	}
 	
 	// Reads a data item

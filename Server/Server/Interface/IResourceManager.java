@@ -27,6 +27,8 @@ import java.util.*;
 public interface IResourceManager extends Remote 
 {
 	
+
+
 	public RMItem getItem(int xid, String key)
 	throws RemoteException;
 	
@@ -278,4 +280,6 @@ public interface IResourceManager extends Remote
         throws RemoteException;
 
 	public void start(int xid) throws RemoteException;
+
+	public void storeMapPersistent() throws RemoteException;
 }

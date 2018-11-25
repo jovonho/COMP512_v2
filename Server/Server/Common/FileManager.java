@@ -11,14 +11,15 @@ public class FileManager
 	
 	private File masterRecord;
 	
-	public FileManager(String fileNamePrefix)
+	public FileManager(String namePrefix)
 	{
-		this.fileNamePrefix = fileNamePrefix;
+		this.fileNamePrefix = "records//" + namePrefix;
 		try
 		{
 			masterRecord = new File(fileNamePrefix+"_master");
 			masterRecord.createNewFile();
 			File filea = new File(fileNamePrefix+"_A");
+			
 			if(filea.length() == 0)
 			{
 				RMHashMap emptymap = new RMHashMap();
@@ -57,9 +58,13 @@ public class FileManager
 	
 	public RMHashMap getPersistentData() throws Exception
 	{
+		System.out.println(fileNamePrefix);
 		FileInputStream fis = new FileInputStream(fileNamePrefix+"_"+(char) (131 - filePointer));
 		ObjectInputStream ois = new ObjectInputStream(fis);
-		return (RMHashMap) ois.readObject();
+		RMHashMap ret = (RMHashMap) ois.readObject();
+		ois.close();
+		fis.close();
+		return ret;
 	}
 	
 	public void writePersistentData(RMHashMap hm) throws Exception
@@ -68,6 +73,7 @@ public class FileManager
 		ObjectOutputStream oos = new ObjectOutputStream(fos);
 		oos.writeObject(hm);
 		oos.close();
+		fos.close();
 		swap();
 	}
 	
