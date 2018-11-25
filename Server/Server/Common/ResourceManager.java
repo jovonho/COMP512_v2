@@ -25,10 +25,20 @@ public class ResourceManager implements IResourceManager
 	// Maps keys to RMItems
 	protected RMHashMap localCopies = new RMHashMap();
 	
+	//Rey
+	private FileManager m_fileManager;
+	
 
 	public ResourceManager(String p_name)
 	{
 		m_name = p_name;
+		m_fileManager = new FileManager(m_name);
+		try {
+			m_data = m_fileManager.getPersistentData();
+		} catch (Exception e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
 	}
 	
 	// To satisfy the interface, real start method is start(int xid)
@@ -85,6 +95,12 @@ public class ResourceManager implements IResourceManager
 		toDeleteMap.remove(xid);
 		
 		Trace.info("Transaction-" + xid + " has committed at the RM");
+		try {
+			m_fileManager.writePersistentData(m_data);
+		} catch (Exception e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
 		return true;
 	}
 	

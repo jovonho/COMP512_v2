@@ -1,0 +1,1 @@
+1) If nothing to commit to file, fileManager should not swap file pointer or update a file.
