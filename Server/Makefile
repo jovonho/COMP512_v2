@@ -1,9 +1,4 @@
-all: git.push java.policy RMIInterface.jar RMItem.jar compile-server-rmi compile-middleware
-
-git.push: FORCE
-	git add .
-	git commit -m "Hey"
-	git push -f origin master
+all: java.policy RMIInterface.jar RMItem.jar compile-server-rmi compile-middleware
 
 java.policy: FORCE
 	@echo "Creating server java policy"
