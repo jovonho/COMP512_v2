@@ -36,6 +36,8 @@ public class TransactionManager {
 	
 	private TransactionManagerLog log;
 	
+	private ArrayList<Integer> crashedTransactions = new ArrayList<Integer>();
+	
 
 	@SuppressWarnings("unchecked")
 	public TransactionManager(IResourceManager custs)
@@ -57,19 +59,8 @@ public class TransactionManager {
 		activeTransactions = (ArrayList<Integer>) log.getTransactions().clone();
 
 		
-		while(!activeTransactions.isEmpty()){
-			int toAbort=activeTransactions.get(0);
-			System.out.println("Tx" + toAbort + " was still active during crash.");
-			try {
-				log.removeTxLog(toAbort);
-				abort(toAbort);
-				activeTransactions.remove(0);
-				System.out.println("success");
-			} catch (RemoteException e) {
-				e.printStackTrace();
-			} catch (InvalidTransactionException e) {
-				e.printStackTrace();
-			} 
+		for(int i =0; i<activeTransactions.size(); i++){
+			crashedTransactions.add(activeTransactions.get(i));
 		}
 		
 		this.customersManager = custs;
@@ -142,14 +133,16 @@ public class TransactionManager {
 		return xid;
 	}
 	
-	private void resetRMTimers() throws RemoteException {
+	private void resetRMTimers() throws RemoteException
+	{
 		Middleware.m_flightsManager.resetTimer();
 		Middleware.m_carsManager.resetTimer();
 		Middleware.m_roomsManager.resetTimer();
 		customersManager.resetTimer();
 	}
 	
-	private void cancelRMTimers() throws RemoteException {
+	private void cancelRMTimers() throws RemoteException
+	{
 		Middleware.m_flightsManager.cancelTimer();
 		Middleware.m_carsManager.cancelTimer();
 		Middleware.m_roomsManager.cancelTimer();
@@ -223,6 +216,12 @@ public class TransactionManager {
 		checkValid(xid);
 		cancelTimer(xid);
 		cancelRMTimers();
+		
+		if(crashedTransactions.contains(xid)){
+			int toAbort = crashedTransactions.get((Integer) xid);
+			crashedTransactions.remove((Integer) xid);
+			abort(toAbort);
+		}
 
 		// Start sending out vote requests
 		// TODO Timeout while waiting for answer to prepare

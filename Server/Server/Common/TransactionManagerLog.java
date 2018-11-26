@@ -56,8 +56,4 @@ public class TransactionManagerLog extends Log {
 	public void removeTxLog(int xid){
 		transactions.remove((Integer) xid);
 	}
-	
-	
-
-	
 }
