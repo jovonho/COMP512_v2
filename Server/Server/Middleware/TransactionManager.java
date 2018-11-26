@@ -59,8 +59,15 @@ public class TransactionManager {
 		activeTransactions = (ArrayList<Integer>) log.getTransactions().clone();
 
 		
-		for(int i =0; i<activeTransactions.size(); i++){
-			crashedTransactions.add(activeTransactions.get(i));
+		for (int id : activeTransactions) {
+			try {
+				abort(id);
+				activeTransactions.remove((Integer) id);
+				
+			} catch (RemoteException | InvalidTransactionException e) {
+				e.printStackTrace();
+			}
+			
 		}
 		
 		this.customersManager = custs;
