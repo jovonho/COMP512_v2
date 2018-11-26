@@ -40,6 +40,7 @@ public class TransactionManagerLog extends Log {
 		
 	}
 	
+	
 	public int getCounter() {
 		return xidCounter;
 	}

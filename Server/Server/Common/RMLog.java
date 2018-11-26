@@ -9,7 +9,6 @@ public class RMLog extends Log {
 	
 	private ArrayList<Integer> transactions;
 	
-
 	public RMLog(String p_name) {
 		super(p_name);
 		

@@ -13,6 +13,7 @@ import java.rmi.RemoteException;
 import java.io.*;
 
 public class TransactionManager {
+	
 
 	protected int xidCounter;
 	/**
@@ -38,6 +39,7 @@ public class TransactionManager {
 	
 	private ArrayList<Integer> crashedTransactions = new ArrayList<Integer>();
 	
+	private boolean justBooted;
 
 	@SuppressWarnings("unchecked")
 	public TransactionManager(IResourceManager custs)
@@ -55,20 +57,18 @@ public class TransactionManager {
 			e.printStackTrace();
 		}
 		
+		// fetch data from log
 		xidCounter = log.getCounter();
-		activeTransactions = (ArrayList<Integer>) log.getTransactions().clone();
-
+		crashedTransactions = (ArrayList<Integer>) log.getTransactions().clone();
 		
-//		for (int id : activeTransactions) {
-//			crashedTransactions.add(id);
-//		}
-//		
-//		// Reset the activeTransactions after having aborted all of them
-//		activeTransactions = new ArrayList<Integer>();
+		// reset activeTransactions upon starting 
+		activeTransactions = new ArrayList<>();
 		
 		this.customersManager = custs;
 		
 		System.out.println("End of TM Constructor: " + activeTransactions.toString());
+		
+		justBooted = true;
 				
 	}
 	
@@ -100,10 +100,11 @@ public class TransactionManager {
 	{	
 		System.out.println("Start of Start(): " + activeTransactions.toString());
 		System.out.println("Log at Start of start(): " + log.getTransactions().toString());
+		
 		cancelRMTimers();
 		int xid = ++xidCounter;
 		
-		for (int id : activeTransactions) {
+		for (int id : crashedTransactions) {
 			try {
 				abortCrashedTx(id);
 			} catch (InvalidTransactionException e) {
@@ -111,11 +112,8 @@ public class TransactionManager {
 				e.printStackTrace();
 			}
 		}
+		crashedTransactions = new ArrayList<>();
 		
-		//crashedTransactions = new ArrayList<>();
-		
-		
-		activeTransactions = new ArrayList<>();
 		
 		activeTransactions.add(xid);
 		
@@ -198,6 +196,16 @@ public class TransactionManager {
 	{
 		cancelRMTimers();
 		
+		for (int id : crashedTransactions) {
+			try {
+				abortCrashedTx(id);
+			} catch (InvalidTransactionException e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+			}
+		}
+		crashedTransactions = new ArrayList<>();
+		
 		if (!activeTransactions.contains(xid)) 
 		{
 			throw new InvalidTransactionException(xid, null);
@@ -251,14 +259,18 @@ public class TransactionManager {
 		cancelTimer(xid);
 		cancelRMTimers();
 		
-		if(crashedTransactions.contains(xid)){
-			int toAbort = crashedTransactions.get((Integer) xid);
-			crashedTransactions.remove((Integer) xid);
-			abort(toAbort);
+		
+		for (int id : crashedTransactions) {
+			try {
+				abortCrashedTx(id);
+			} catch (InvalidTransactionException e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+			}
 		}
+		crashedTransactions = new ArrayList<>();
 
 		// Start sending out vote requests
-		// TODO Timeout while waiting for answer to prepare
 		
 		// Creates a timer to wait for votes 
 		Timer votesTimer = new Timer();
@@ -276,21 +288,108 @@ public class TransactionManager {
 			}
 		}, TTL);
 		
-		// TODO waiting mechanism 
-		if(!Middleware.m_flightsManager.prepare(xid) || !Middleware.m_carsManager.prepare(xid) || !Middleware.m_roomsManager.prepare(xid)){
-			votesTimer.cancel();
+		boolean consensus = true;
+		
+		while(true)
+		{	
+			try
+			{
+				consensus = consensus & Middleware.m_flightsManager.prepare(xid);	
+				break;
+			}
+			catch (Exception e){try {
+				System.out.println("Flights has crashed. Waiting for reboot.");
+				Thread.sleep(1000);
+			} catch (InterruptedException e1) {
+				e1.printStackTrace();
+			}}
+		}
+		while(true)
+		{	
+			try
+			{
+				consensus = consensus & Middleware.m_carsManager.prepare(xid);	
+				break;
+			}
+			catch (Exception e){try {
+				System.out.println("Cars has crashed. Waiting for reboot.");
+				Thread.sleep(1000);
+			} catch (InterruptedException e1) {
+				e1.printStackTrace();
+			}}
+		}
+		while(true)
+		{	
+			try
+			{
+				consensus = consensus & Middleware.m_roomsManager.prepare(xid);	
+				break;
+			}
+			catch (Exception e){try {
+				System.out.println("Rooms has crashed. Waiting for reboot.");
+				Thread.sleep(1000);
+			} catch (InterruptedException e1) {
+				e1.printStackTrace();
+			}}
+		}
+		
+		votesTimer.cancel();
+		if(!consensus)
+		{
 			abort(xid);
 			return false;
 		}
-		else {
-			votesTimer.cancel();
+
+		// INDECISON PERIOD
+		// TODO Handle crashes here -- WE HAVE TO COMMIT WHATEVER HAPPENS
+		while(true) {
+			try
+			{
+				Middleware.m_flightsManager.commit(xid);
+				break;
+			}
+			catch (Exception e)
+			{
+				try {
+					Thread.sleep(1000);
+				} catch (InterruptedException e1) {
+					// TODO Auto-generated catch block
+					e1.printStackTrace();
+				}
+			}
 		}
-		
-		// TODO If we get past the prepare, everything needs to commit
-		
-		Middleware.m_flightsManager.commit(xid);
-		Middleware.m_carsManager.commit(xid);
-		Middleware.m_roomsManager.commit(xid);
+		while(true) {
+			try
+			{
+				Middleware.m_carsManager.commit(xid);
+				break;
+			}
+			catch (Exception e)
+			{
+				try {
+					Thread.sleep(1000);
+				} catch (InterruptedException e1) {
+					// TODO Auto-generated catch block
+					e1.printStackTrace();
+				}
+			}
+		}
+		while(true) {
+			try
+			{
+				Middleware.m_roomsManager.commit(xid);
+				break;
+			}
+			catch (Exception e)
+			{
+				try {
+					Thread.sleep(1000);
+				} catch (InterruptedException e1) {
+					// TODO Auto-generated catch block
+					e1.printStackTrace();
+				}
+			}
+		}
 		
 		//commit customers:
 		// Iterate through the customers the transaction has created or modified and write them to storage.

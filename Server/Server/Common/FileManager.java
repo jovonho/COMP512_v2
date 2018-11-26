@@ -85,7 +85,21 @@ public class FileManager
 		swap();
 	}
 	
-	private void swap() throws IOException
+	public void writePersistentNoSwap(RMHashMap hm)
+	{
+		try {
+			FileOutputStream fos = new FileOutputStream(fileNamePrefix+"_"+(char) filePointer);
+			ObjectOutputStream oos = new ObjectOutputStream(fos);
+			oos.writeObject(hm);
+			oos.close();
+			fos.close();			
+		}
+		catch (Exception e) {
+			e.printStackTrace();
+		}
+	}
+	
+	public void swap() throws IOException
 	{
 		br = new BufferedReader(new FileReader(masterRecord));
 		bw = new BufferedWriter(new FileWriter(masterRecord));

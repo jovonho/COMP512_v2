@@ -37,6 +37,8 @@ public class ResourceManager implements IResourceManager
 	
 	private ArrayList<Integer> crashedTransactions = new ArrayList<Integer>();
 	
+	private RMHashMap temp;
+	
 
 	public ResourceManager(String p_name)
 	{
@@ -61,12 +63,14 @@ public class ResourceManager implements IResourceManager
 		{
 			e.printStackTrace();
 		}
-		activeTransactions = (ArrayList<Integer>) log.getTransactions().clone();
+//		activeTransactions = (ArrayList<Integer>) log.getTransactions().clone();
+//		
+//		while(!activeTransactions.isEmpty()){
+//			crashedTransactions.add(activeTransactions.get(0));
+//			activeTransactions.remove(0);
+//		}
 		
-		while(!activeTransactions.isEmpty()){
-			crashedTransactions.add(activeTransactions.get(0));
-			activeTransactions.remove(0);
-		}
+		activeTransactions = new ArrayList<>();
 
 		// Global timer
 		timer = new Timer();
@@ -124,56 +128,34 @@ public class ResourceManager implements IResourceManager
 		transactionMap.put(xid, new ArrayList<String>());
 		toDeleteMap.put(xid, new ArrayList<String>());
 		
+		
 		log.updateLog(xid);
 		log.flushLog();
 	}
 
 	
 	// Updated - Milestone 3
-	public boolean commit(int xid) throws RemoteException, TransactionAbortedException, InvalidTransactionException{
+	public boolean commit(int xid) throws RemoteException, TransactionAbortedException, InvalidTransactionException
+	{
 		
-		// Iterate through the items the transaction has created or modified and write them to storage.
-		for (String key : transactionMap.get(xid)) 
+		try 
 		{
-			RMItem toCommit = readDataCopy(xid, key);
-			if (toCommit == null) {
-				break;
-			}
-			else {
-				putItem(xid, key, toCommit);
-			}
-			removeDataCopy(xid, key);
+			m_fileManager.swap();
+		} 
+		catch (IOException e) 
+		{
+			e.printStackTrace();
 		}
 		
-		// Iterate through the items the transaction marked for deletion and remove them from storage.
-		/**
-		 * Had to stop removing the items as we were iterating over the ArrayList because we would get the exception linked below.
-		 * Instead we simply remove the whole Arraylist once we're done deleting each item inside of it.
-		 * Could this cause errors with other transactions trying to do stuff concurrently?
-		 * see https://stackoverflow.com/questions/223918/iterating-through-a-collection-avoiding-concurrentmodificationexception-when-mo
-		 */
-		for (String key : toDeleteMap.get(xid)) {
-			if (key == null) {
-				break;
-			}
-			else {
-				System.out.println(key + " found in delete map, should be removed.");
-				removeData(xid, key);
-			}
-		}
+		// updating our storage to be the most recent version
+		m_data = (RMHashMap) temp.clone();
 		
-		// Both the transactionMap and the toDeleteMap should be empty at this point -- possible check for debug
+		
 		activeTransactions.remove((Integer) xid); 
 		transactionMap.remove(xid);
 		toDeleteMap.remove(xid);
 		
 		Trace.info("Transaction-" + xid + " has committed at the RM");
-		
-		try {
-			m_fileManager.writePersistentData(m_data);
-		} catch (Exception e) {
-			e.printStackTrace();
-		}
 		
 		log.removeTxLog(xid);
 		log.flushLog();
@@ -220,13 +202,55 @@ public class ResourceManager implements IResourceManager
 	 * @return
 	 * @throws RemoteException
 	 */
-	public boolean prepare(int xid) throws RemoteException{
-		if(crashedTransactions.contains(xid)){
-			crashedTransactions.remove((Integer) xid);
+	public boolean prepare(int xid) throws RemoteException
+	{
+		cancelTimer();
+		
+		
+//		if(crashedTransactions.contains(xid)){
+//			crashedTransactions.remove((Integer) xid);
+//			return false;
+//		}
+		
+		if (!activeTransactions.contains((Integer) xid)) {
 			return false;
 		}
+		
+		//Start a timer to wait for the Decision from coordinator
+		
+		temp = (RMHashMap) m_data.clone();
+		
+		
+		for (String key : transactionMap.get(xid)) 
+		{
+			RMItem toCommit = readDataCopy(xid, key);
+			if (toCommit == null) {
+				break;
+			}
+			else {
+				temp.put(key, toCommit);
+			}
+			removeDataCopy(xid, key);
+		}
+		
+		transactionMap.remove((Integer) xid);
+		
+		for (String key : toDeleteMap.get(xid)) {
+			if (key == null) {
+				break;
+			}
+			else {
+				temp.remove(key);
+			}
+		}
+		
+		toDeleteMap.remove((Integer) xid);
+		
+		m_fileManager.writePersistentNoSwap(temp);
+		resetTimer();
 		return true;
 	}
+	
 	
 	
 	protected RMItem readDataCopy(int xid, String key)
