@@ -59,21 +59,34 @@ public class TransactionManager {
 		activeTransactions = (ArrayList<Integer>) log.getTransactions().clone();
 
 		
-		for (int id : activeTransactions) {
-			try {
-				abort(id);
-				activeTransactions.remove((Integer) id);
-				
-			} catch (RemoteException | InvalidTransactionException e) {
-				e.printStackTrace();
-			}
-			
-		}
+//		for (int id : activeTransactions) {
+//			crashedTransactions.add(id);
+//		}
+//		
+//		// Reset the activeTransactions after having aborted all of them
+//		activeTransactions = new ArrayList<Integer>();
 		
 		this.customersManager = custs;
 		
 		System.out.println("End of TM Constructor: " + activeTransactions.toString());
 				
+	}
+	
+	// Crashed transactions have their xid in the activeTrasnactions list but don't have a timer
+	public void abortCrashedTx(int xid) throws RemoteException, InvalidTransactionException {
+		
+		if (Middleware.m_flightsManager == null) {
+			System.out.println("FlightsManager is null");
+		}
+		else {
+			
+			Middleware.m_flightsManager.abort(xid);
+			Middleware.m_carsManager.abort(xid);
+			Middleware.m_roomsManager.abort(xid);
+		}
+		
+		log.removeTxLog(xid);
+		log.flushLog();
 	}
 	
 
@@ -90,6 +103,19 @@ public class TransactionManager {
 		cancelRMTimers();
 		int xid = ++xidCounter;
 		
+		for (int id : activeTransactions) {
+			try {
+				abortCrashedTx(id);
+			} catch (InvalidTransactionException e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+			}
+		}
+		
+		//crashedTransactions = new ArrayList<>();
+		
+		
+		activeTransactions = new ArrayList<>();
 		
 		activeTransactions.add(xid);
 		
@@ -181,6 +207,7 @@ public class TransactionManager {
 
 			transactionTimers.get(xid).cancel();
 			transactionTimers.remove(xid);
+			
 			
 			Middleware.m_flightsManager.abort(xid);
 			Middleware.m_carsManager.abort(xid);

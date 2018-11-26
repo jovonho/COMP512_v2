@@ -196,6 +196,8 @@ public class ResourceManager implements IResourceManager
 	public void abort(int xid) throws RemoteException, InvalidTransactionException {
 
 		// Remove all local copy objects associated with this transaction
+		System.out.println(transactionMap.toString());
+		
 		for (String key : transactionMap.get(xid)) 
 		{
 			removeDataCopy(xid, key);
@@ -580,24 +582,60 @@ public class ResourceManager implements IResourceManager
 	public boolean addCars(int xid, String location, int count, int price) throws RemoteException
 	{
 		Trace.info("RM::addCars(" + xid + ", " + location + ", " + count + ", $" + price + ") called");
-		Car curObj = (Car)readData(xid, Car.getKey(location));
-		if (curObj == null)
+		
+		// When adding a new car, if it was previously marked for deletion, we cancel the deletion 
+		if(toDeleteMap.get(xid).contains("car-"+location))
 		{
-			// Car location doesn't exist yet, add it
-			Car newObj = new Car(location, count, price);
-			writeData(xid, newObj.getKey(), newObj);
-			Trace.info("RM::addCars(" + xid + ") created new location " + location + ", count=" + count + ", price=$" + price);
+			toDeleteMap.get(xid).remove("car-"+location);
+			Trace.info("RM::Car-"+location+" was removed from toDeleteMap" );
 		}
-		else
+		
+		// Trying to fetch the flight from our localCopy
+		Car localObj = (Car)readDataCopy(xid, Car.getKey(location));
+		
+		// If not in localCopy
+		if(localObj == null)
 		{
-			// Add count to existing car location and update price if greater than zero
-			curObj.setCount(curObj.getCount() + count);
+			Trace.info("car-"+location+" not found in local Copy");
+			
+			// Attempt to get it from storage
+			Car storedObj = (Car) getItem(xid, "car-"+location);
+
+			// If we find it in storage
+			if(storedObj!=null)
+			{
+				Trace.info("car-"+location+" found in storage");
+				storedObj.setCount(storedObj.getCount()+count);
+				if(price>0) storedObj.setPrice(price);
+				
+				// Put the modified flight in local copy to be written to storage at commit time
+				writeDataCopy(xid, storedObj.getKey(), storedObj);
+				transactionMap.get(xid).add(storedObj.getKey());
+				Trace.info("car-" + location+ " modified from storage, added to localCopy");
+			}
+			// If not in storage, flight does not exist, so we create it
+			else
+			{
+				Trace.info("car-" + location + " not found in storage, creating new flight.");
+				Car newObj = new Car(location, count, price);
+				
+				//Write it to our local Copy so it will be added to storage at commit time
+				writeDataCopy(xid, newObj.getKey(), newObj);
+				transactionMap.get(xid).add(newObj.getKey());
+				Trace.info("addCar successful");
+			}
+		}
+		// If already in local Copy, update it there
+		else	
+		{	
+			Trace.info("car-" + location + " found in localCopy");
+			localObj.setCount(localObj.getCount() + count);
 			if (price > 0)
 			{
-				curObj.setPrice(price);
+				localObj.setPrice(price);
 			}
-			writeData(xid, curObj.getKey(), curObj);
-			Trace.info("RM::addCars(" + xid + ") modified existing location " + location + ", count=" + curObj.getCount() + ", price=$" + price);
+			writeDataCopy(xid, localObj.getKey(), localObj);
+			Trace.info("addCar successful.");
 		}
 		return true;
 	}
@@ -607,22 +645,60 @@ public class ResourceManager implements IResourceManager
 	public boolean addRooms(int xid, String location, int count, int price) throws RemoteException
 	{
 		Trace.info("RM::addRooms(" + xid + ", " + location + ", " + count + ", $" + price + ") called");
-		Room curObj = (Room)readData(xid, Room.getKey(location));
-		if (curObj == null)
+		
+		// When adding a new car, if it was previously marked for deletion, we cancel the deletion 
+		if(toDeleteMap.get(xid).contains("room-"+location))
 		{
-			// Room location doesn't exist yet, add it
-			Room newObj = new Room(location, count, price);
-			writeData(xid, newObj.getKey(), newObj);
-			Trace.info("RM::addRooms(" + xid + ") created new room location " + location + ", count=" + count + ", price=$" + price);
-		} else {
-			// Add count to existing object and update price if greater than zero
-			curObj.setCount(curObj.getCount() + count);
+			toDeleteMap.get(xid).remove("room-"+location);
+			Trace.info("RM::room-"+location+" was removed from toDeleteMap" );
+		}
+		
+		// Trying to fetch the flight from our localCopy
+		Room localObj = (Room)readDataCopy(xid, Room.getKey(location));
+		
+		// If not in localCopy
+		if(localObj == null)
+		{
+			Trace.info("room-"+location+" not found in local Copy");
+			
+			// Attempt to get it from storage
+			Room storedObj = (Room) getItem(xid, "room-"+location);
+
+			// If we find it in storage
+			if(storedObj!=null)
+			{
+				Trace.info("room-"+location+" found in storage");
+				storedObj.setCount(storedObj.getCount()+count);
+				if(price>0) storedObj.setPrice(price);
+				
+				// Put the modified flight in local copy to be written to storage at commit time
+				writeDataCopy(xid, storedObj.getKey(), storedObj);
+				transactionMap.get(xid).add(storedObj.getKey());
+				Trace.info("room-" + location+ " modified from storage, added to localCopy");
+			}
+			// If not in storage, flight does not exist, so we create it
+			else
+			{
+				Trace.info("room-" + location + " not found in storage, creating new room.");
+				Room newObj = new Room(location, count, price);
+				
+				//Write it to our local Copy so it will be added to storage at commit time
+				writeDataCopy(xid, newObj.getKey(), newObj);
+				transactionMap.get(xid).add(newObj.getKey());
+				Trace.info("addRooms successful");
+			}
+		}
+		// If already in local Copy, update it there
+		else	
+		{	
+			Trace.info("room-" + location + " found in localCopy");
+			localObj.setCount(localObj.getCount() + count);
 			if (price > 0)
 			{
-				curObj.setPrice(price);
+				localObj.setPrice(price);
 			}
-			writeData(xid, curObj.getKey(), curObj);
-			Trace.info("RM::addRooms(" + xid + ") modified existing location " + location + ", count=" + curObj.getCount() + ", price=$" + price);
+			writeDataCopy(xid, localObj.getKey(), localObj);
+			Trace.info("addRoom successful.");
 		}
 		return true;
 	}

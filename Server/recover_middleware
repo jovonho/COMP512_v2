@@ -1,0 +1,3 @@
+#! /bin/bash
+
+./run_middleware.sh lab2-4.cs.mcgill.ca lab1-10.cs.mcgill.ca open-4.cs.mcgill.ca
