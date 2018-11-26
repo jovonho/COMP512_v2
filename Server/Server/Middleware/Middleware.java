@@ -4,6 +4,8 @@ import Server.Interface.*;
 
 import java.rmi.RemoteException;
 import java.util.Calendar;
+import java.util.Timer;
+import java.util.TimerTask;
 import java.util.Vector;
 
 import Server.Interface.InvalidTransactionException;
@@ -21,15 +23,18 @@ public abstract class Middleware implements IResourceManager {
 	static IResourceManager m_carsManager = null;
 	static IResourceManager m_roomsManager = null;
 	
-	static TransactionManager txManager = null;
+	protected TransactionManager txManager = null;
 	
 	protected FileManager m_fileManager;
+	
+	// Inactivity timeout variables
+	private Timer timer;
+	final int TTL = 60000;
 
 
 	public Middleware(String p_name)
 	{   
 		m_name = p_name;
-		txManager = new TransactionManager(this);
 		m_fileManager = new FileManager(p_name);
 		
 		try {
@@ -37,6 +42,42 @@ public abstract class Middleware implements IResourceManager {
 		} catch (Exception e) {
 			e.printStackTrace();
 		}
+		
+		timer = new Timer();
+		timer.schedule(new TimerTask() {
+			@Override
+			public void run() {
+				Trace.info(m_name + " timed out");
+				try {
+					shutdown();
+				} catch (RemoteException e) {
+					e.printStackTrace();
+				}
+			}
+		}, TTL);
+		
+		txManager = new TransactionManager(this);
+	}
+	
+	public void resetTimer() {
+		timer.cancel();
+		timer = new Timer();
+		timer.schedule(new TimerTask() {
+			@Override
+			public void run() {
+				Trace.info(m_name + "_RM timed out");
+				try {
+					shutdown();
+				} catch (RemoteException e) {
+					e.printStackTrace();
+				}
+			}
+		}, TTL);
+		
+	}
+	
+	public void cancelTimer() {
+		timer.cancel();
 	}
 	
 	public int start() throws RemoteException {
@@ -48,6 +89,10 @@ public abstract class Middleware implements IResourceManager {
 	
 	public void abort(int xid) throws InvalidTransactionException, RemoteException {
 			txManager.abort(xid);
+	}
+	
+	public boolean prepare(int xid) {
+		return false;
 	}
 	
 	public void shutdown() throws RemoteException {

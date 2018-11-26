@@ -282,4 +282,10 @@ public interface IResourceManager extends Remote
 	public void start(int xid) throws RemoteException;
 
 	public void storeMapPersistent() throws RemoteException;
+
+	public void resetTimer() throws RemoteException;
+
+	public void cancelTimer() throws RemoteException;
+
+	public boolean prepare(int xid) throws RemoteException;
 }

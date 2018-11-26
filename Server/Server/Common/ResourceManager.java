@@ -17,6 +17,7 @@ public class ResourceManager implements IResourceManager
 	protected String m_name = "";
 	protected RMHashMap m_data = new RMHashMap();
 	
+	
 	// Maps transaction IDs to the keys of objects it has accessed
 	private Map<Integer, ArrayList<String>> transactionMap = new HashMap<>();
 	// Maps transaction IDs to keys of deleted objects
@@ -25,8 +26,16 @@ public class ResourceManager implements IResourceManager
 	// Maps keys to RMItems
 	protected RMHashMap localCopies = new RMHashMap();
 	
-	
 	private FileManager m_fileManager;
+	
+	// Inactivity timeout variables
+	private Timer timer;
+	final int TTL = 60000;
+	
+	private RMLog log;
+	private ArrayList<Integer> activeTransactions;
+	
+	private ArrayList<Integer> crashedTransactions = new ArrayList<Integer>();
 	
 
 	public ResourceManager(String p_name)
@@ -36,11 +45,73 @@ public class ResourceManager implements IResourceManager
 		try {
 			m_data = m_fileManager.getPersistentData();
 		} catch (Exception e) {
-			// TODO Auto-generated catch block
 			e.printStackTrace();
 		}
+		
+		
+		try 
+		{
+			log = (RMLog) RMLog.getLog("log//" + m_name + ".log");
+		} 
+		catch (FileNotFoundException e) 
+		{
+			log = new RMLog(m_name);
+		}
+		catch (Exception e) 
+		{
+			e.printStackTrace();
+		}
+		activeTransactions = log.getTransactions();
+		
+		while(!activeTransactions.isEmpty()){
+			crashedTransactions.add(activeTransactions.get(0));
+			activeTransactions.remove(0);
+		}
+
+		// Global timer
+		timer = new Timer();
+		timer.schedule(new TimerTask() {
+			@Override
+			public void run() {
+				Trace.info(m_name + "_RM timed out");
+				try {
+					shutdown();
+				} catch (RemoteException e) {
+					e.printStackTrace();
+				}
+			}
+		}, TTL);
+		
+		
 	}
 	
+	
+	public void resetTimer() {
+		timer.cancel();
+		timer = new Timer();
+		timer.schedule(new TimerTask() {
+			@Override
+			public void run() {
+				Trace.info(m_name + "_RM timed out");
+				try {
+					shutdown();
+				} catch (RemoteException e) {
+					e.printStackTrace();
+				}
+			}
+		}, TTL);
+	}
+	
+	
+	public void cancelTimer() {
+		try {
+			timer.cancel();
+		}
+		catch (Exception e) 
+		{
+
+		}
+	}
 	// To satisfy the interface, real start method is start(int xid)
 	public int start() throws RemoteException 
 	{
@@ -49,15 +120,16 @@ public class ResourceManager implements IResourceManager
 	
 	// Real start method
 	public void start(int xid) {
+		activeTransactions.add(xid);
 		transactionMap.put(xid, new ArrayList<String>());
 		toDeleteMap.put(xid, new ArrayList<String>());
+		
+		/*log.updateLog(xid);
+		log.flushLog();*/
 	}
 
 	
 	// Updated - Milestone 3
-	/**
-	 * TODO: Think about toDelete not removing the items one by one
-	 */
 	public boolean commit(int xid) throws RemoteException, TransactionAbortedException, InvalidTransactionException{
 		
 		// Iterate through the items the transaction has created or modified and write them to storage.
@@ -91,6 +163,7 @@ public class ResourceManager implements IResourceManager
 		}
 		
 		// Both the transactionMap and the toDeleteMap should be empty at this point -- possible check for debug
+		activeTransactions.remove((Integer) xid); 
 		transactionMap.remove(xid);
 		toDeleteMap.remove(xid);
 		
@@ -101,6 +174,10 @@ public class ResourceManager implements IResourceManager
 		} catch (Exception e) {
 			e.printStackTrace();
 		}
+		
+		log.removeTxLog(xid);
+		log.flushLog();
+		
 		return true;
 	}
 	
@@ -127,10 +204,27 @@ public class ResourceManager implements IResourceManager
 		// Remove the transaction's data structures
 		transactionMap.remove(xid);
 		toDeleteMap.remove(xid);
+		
+		log.updateLog(xid);
+		log.removeTxLog(xid);
 	}
 	
 	
-	
+	/**
+	 * prepare is the equivalent of the vote request
+	 * prepare checks if the transaction xid crashed during execution.
+	 * If it did it will return false to the Middleware, otherwise it will return true
+	 * @param xid
+	 * @return
+	 * @throws RemoteException
+	 */
+	public boolean prepare(int xid) throws RemoteException{
+		if(crashedTransactions.contains(xid)){
+			crashedTransactions.remove((Integer) xid);
+			return false;
+		}
+		return true;
+	}
 	
 	
 	protected RMItem readDataCopy(int xid, String key)

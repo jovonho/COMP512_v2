@@ -5,8 +5,6 @@
 
 package Server.Common;
 
-import java.util.*;
-
 public class Customer extends RMItem
 {
 	private int m_ID;

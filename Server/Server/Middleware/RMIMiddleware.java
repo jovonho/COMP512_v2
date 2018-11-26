@@ -63,6 +63,8 @@ public class RMIMiddleware extends Middleware {
 			m_flightsManager = m_managers[0];
 			m_carsManager = m_managers[1];
 			m_roomsManager = m_managers[2];
+			
+			//server.txManager = new TransactionManager((Middleware) server); 
 
 			
 

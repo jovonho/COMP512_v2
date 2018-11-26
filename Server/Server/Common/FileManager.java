@@ -3,24 +3,32 @@ package Server.Common;
 import java.io.*;
 public class FileManager
 {
+	/**
+	 * Name of resource type we are dealing with.
+	 */
 	private String fileNamePrefix;
 	private BufferedReader br;
 	private BufferedWriter bw;
 	
+	/**
+	 * Pointer on RAM to active disk record.
+	 */
 	private int filePointer;
-	
+	/**
+	 * Pointer on disk to active disk record.
+	 */
 	private File masterRecord;
 	
 	public FileManager(String namePrefix)
 	{
-		this.fileNamePrefix = "records//" + namePrefix;
+		this.fileNamePrefix = "records//" + namePrefix;								// Set the filename. This includes a "records" directory
 		try
 		{
-			masterRecord = new File(fileNamePrefix+"_master");
-			masterRecord.createNewFile();
+			masterRecord = new File(fileNamePrefix+"_master");						// Make a file object.
+			masterRecord.createNewFile();											// Create the file on disk if it does not exist.
 			File filea = new File(fileNamePrefix+"_A");
-			
-			if(filea.length() == 0)
+
+			if(filea.length() == 0)													// If file A is empty, then we need to populate it with an empty RMHashmap.
 			{
 				RMHashMap emptymap = new RMHashMap();
 				FileOutputStream fos = new FileOutputStream(fileNamePrefix+"_A");
