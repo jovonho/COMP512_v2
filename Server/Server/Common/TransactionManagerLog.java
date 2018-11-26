@@ -28,9 +28,8 @@ public class TransactionManagerLog extends Log {
 			fos = new FileOutputStream(fileName);
 			ObjectOutputStream oos = new ObjectOutputStream(fos);
 			oos.writeObject(this);
-			System.out.println("In Log constructor writing: " + transactions.toString());
-			fos.close();
 			oos.close();
+			fos.close();
 		} 
 		catch (FileNotFoundException e) {
 			e.printStackTrace();
@@ -50,32 +49,13 @@ public class TransactionManagerLog extends Log {
 	}
 	
 	public void updateLog(int xid) {
-		System.out.println("From Log (b4): " + transactions.toString());
 		xidCounter = xid;
 		transactions.add(xid);
-		System.out.println("From Log: " + transactions.toString());
 	}
 	
 	public void removeTxLog(int xid){
 		transactions.remove((Integer) xid);
 	}
-	
-	@Override
-	public boolean flushLog(){
-		try {
-			
-			FileOutputStream fos = new FileOutputStream(fileName);
-			ObjectOutputStream oos = new ObjectOutputStream(fos);
-			oos.writeObject(this);
-			oos.close();
-			fos.close();
-			return true;
-		} catch (IOException e) {
-			e.printStackTrace();
-			return false;
-		}
-	}
-	
 	
 	
 

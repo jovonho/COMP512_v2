@@ -22,7 +22,7 @@ public class TransactionManager {
 
 	private LockManager lockManager = new LockManager();
 
-	private ArrayList<Integer> transactions;
+	private ArrayList<Integer> activeTransactions;
 	private ArrayList<Integer> abortedTransactions = new ArrayList<Integer>();
 
 	protected RMHashMap m_dataCopy = new RMHashMap();
@@ -37,6 +37,7 @@ public class TransactionManager {
 	private TransactionManagerLog log;
 	
 
+	@SuppressWarnings("unchecked")
 	public TransactionManager(IResourceManager custs)
 	{
 		try 
@@ -51,31 +52,29 @@ public class TransactionManager {
 		{
 			e.printStackTrace();
 		}
+		
 		xidCounter = log.getCounter();
-		transactions = log.getTransactions();
+		activeTransactions = (ArrayList<Integer>) log.getTransactions().clone();
 
 		
-		
-		while(!transactions.isEmpty()){
-			int toAbort=transactions.get(0);
+		while(!activeTransactions.isEmpty()){
+			int toAbort=activeTransactions.get(0);
 			System.out.println("Tx" + toAbort + " was still active during crash.");
 			try {
 				log.removeTxLog(toAbort);
 				abort(toAbort);
-				transactions.remove(0);
+				activeTransactions.remove(0);
 				System.out.println("success");
 			} catch (RemoteException e) {
-				// TODO Auto-generated catch block
 				e.printStackTrace();
 			} catch (InvalidTransactionException e) {
-				// TODO Auto-generated catch block
 				e.printStackTrace();
 			} 
 		}
 		
 		this.customersManager = custs;
 		
-		System.out.println("End of TM Constructor: " + transactions.toString());
+		System.out.println("End of TM Constructor: " + activeTransactions.toString());
 				
 	}
 	
@@ -88,11 +87,15 @@ public class TransactionManager {
 	 */
 	public int start() throws RemoteException 
 	{	
-		System.out.println("Start of Start(): " + transactions.toString());
-		
+		System.out.println("Start of Start(): " + activeTransactions.toString());
+		System.out.println("Log at Start of start(): " + log.getTransactions().toString());
 		cancelRMTimers();
 		int xid = ++xidCounter;
-		transactions.add(xid);
+		
+		
+		activeTransactions.add(xid);
+		
+		System.out.println("Log after updating the TM's activateTransactions but not actually updating the log: " + log.getTransactions().toString());
 		
 		transactionMap.put(xid, new ArrayList<String>());
 		toDeleteMap.put(xid, new ArrayList<String>());
@@ -120,7 +123,7 @@ public class TransactionManager {
 		Middleware.m_carsManager.start(xid);
 		Middleware.m_roomsManager.start(xid);
 		// See not in  abort
-		//customersManager.start(xid);
+
 		
 		
 		
@@ -129,6 +132,10 @@ public class TransactionManager {
 		log.updateLog(xid);
 		System.out.println("In TM" + log.getTransactions().toString());
 		log.flushLog();
+		
+		
+		System.out.println("TM::transactions at end of start(): " + activeTransactions.toString());
+
 		
 		Trace.info("TM::start() Transaction " + xid + " started");
 		resetRMTimers();
@@ -165,7 +172,7 @@ public class TransactionManager {
 	{
 		cancelRMTimers();
 		
-		if (!transactions.contains(xid)) 
+		if (!activeTransactions.contains(xid)) 
 		{
 			throw new InvalidTransactionException(xid, null);
 		}
@@ -188,7 +195,7 @@ public class TransactionManager {
 			}
 			
 			abortedTransactions.add(xid);
-			transactions.remove((Integer) xid);
+			activeTransactions.remove((Integer) xid);
 			
 			transactionMap.remove(xid);
 			toDeleteMap.remove(xid);
@@ -289,7 +296,7 @@ public class TransactionManager {
 		
 		// NOTE: Need the cast to Integer to remove the actual Integer xid, else since xid is an int it will consider it an index
 		// This will lead to ArrayIndexOutOfBoundsException
-		transactions.remove((Integer) xid);
+		activeTransactions.remove((Integer) xid);
 		transactionMap.remove(xid);
 		toDeleteMap.remove(xid);
 		lockManager.UnlockAll(xid);
@@ -1484,7 +1491,7 @@ public class TransactionManager {
 	}
 	
 	private void checkValid(int xid) throws InvalidTransactionException, TransactionAbortedException {
-		if (!transactions.contains((Integer) xid)) {
+		if (!activeTransactions.contains((Integer) xid)) {
 			// If the txid is not in the active transactions list then either it does not exist 
 			// or it was silently aborted since last time it was called.
 			if (abortedTransactions.contains((Integer) xid)) {

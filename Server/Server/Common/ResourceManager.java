@@ -61,7 +61,7 @@ public class ResourceManager implements IResourceManager
 		{
 			e.printStackTrace();
 		}
-		activeTransactions = log.getTransactions();
+		activeTransactions = (ArrayList<Integer>) log.getTransactions().clone();
 		
 		while(!activeTransactions.isEmpty()){
 			crashedTransactions.add(activeTransactions.get(0));
@@ -124,8 +124,8 @@ public class ResourceManager implements IResourceManager
 		transactionMap.put(xid, new ArrayList<String>());
 		toDeleteMap.put(xid, new ArrayList<String>());
 		
-		/*log.updateLog(xid);
-		log.flushLog();*/
+		log.updateLog(xid);
+		log.flushLog();
 	}
 
 	
