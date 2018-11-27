@@ -99,6 +99,19 @@ public abstract class Middleware implements IResourceManager {
 		return (RMHashMap) m_data.clone();
 	}
 	
+	//crash API
+	public void resetCrashes() throws RemoteException{
+		txManager.resetCrashes();
+	}
+
+	public void crashMiddleware(int mode) throws RemoteException{
+		txManager.crashMiddleware(mode);
+	}
+
+	public void crashResourceManager(String name, int mode) throws RemoteException{
+		txManager.crashResourceManager(name, mode);
+	}
+	
 	public void shutdown() throws RemoteException {
 		try {
 			shutdownFlights();

@@ -12,39 +12,71 @@ import java.util.*;
 import java.rmi.RemoteException;
 import java.io.*;
 
-public class TransactionManager {
+public class TransactionManager {	
 	
-
-	protected int xidCounter;
+	/**
+	 * A simple way to keep track of the next transaction ID we will use.
+	 */
+	private int xidCounter;
 	/**
 	 * Time to live.
 	 */
-	final int TTL = 40000;
-	
-	final int recoveryCheckInterval = 10000;
-
+	private final int TTL = 40000;
+	/**
+	 * The time in ms that we wait for a crashed resource manager to recover.
+	 */
+	final private int recoveryCheckInterval = 10000;
+	/**
+	 * The lock manager of the system. Handles all data concurrency control for all RMs
+	 */
 	private LockManager lockManager = new LockManager();
 
+	/**
+	 * A list of transactions that have been started but not yet commited/aborted.
+	 */
 	private ArrayList<Integer> activeTransactions;
+	/**
+	 * A list of aborted transactions. Silently aborted transactions are added here.
+	 */
 	private ArrayList<Integer> abortedTransactions = new ArrayList<Integer>();
 
-	protected RMHashMap m_dataCopy = new RMHashMap();
-
+	/**
+	 * Our committed data stored on RAM.
+	 */
+	private RMHashMap m_dataCopy = new RMHashMap();
+	/**
+	 * Our local data stored on RAM.
+	 */
 	private Map<Integer, ArrayList<String>> transactionMap = new HashMap<>();
+	/**
+	 * Holds the keys of items that a transaction deleted. The items are actually deleted from storage at commit time.
+	 */
 	private Map<Integer, ArrayList<String>> toDeleteMap = new HashMap<>();
 	
+	/**
+	 * A series of timers ensuring that the transaction fails if the client takes too long.
+	 */
 	private Map<Integer, Timer> transactionTimers = new HashMap<Integer, Timer>();
 	
+	/**
+	 * An association to the middleware. Middleware is a local object, no RMI involved.
+	 */
 	private Middleware customersManager = null;
-	
+
+	/**
+	 * A long that maintains a set of transactions which we have 
+	 */
 	private TransactionManagerLog log;
 	
+	/**
+	 * Holds all transactions that were active last time the server was active.
+	 */
 	private ArrayList<Integer> crashedTransactions = new ArrayList<Integer>();
 	
-	private boolean justBooted;
 	private RMHashMap temp;
+	
+	private int crashMode = 0;
 
-	@SuppressWarnings("unchecked")
 	public TransactionManager(Middleware custs)
 	{
 		try 
@@ -68,25 +100,16 @@ public class TransactionManager {
 		activeTransactions = new ArrayList<>();
 		
 		this.customersManager = custs;
-		
-		System.out.println("End of TM Constructor: " + activeTransactions.toString());
-		
-		justBooted = true;
 				
 	}
+	
 	
 	// Crashed transactions have their xid in the activeTrasnactions list but don't have a timer
 	public void abortCrashedTx(int xid) throws RemoteException, InvalidTransactionException {
 		
-		if (Middleware.m_flightsManager == null) {
-			System.out.println("FlightsManager is null");
-		}
-		else {
-			
-			Middleware.m_flightsManager.abort(xid);
-			Middleware.m_carsManager.abort(xid);
-			Middleware.m_roomsManager.abort(xid);
-		}
+		Middleware.m_flightsManager.abort(xid);
+		Middleware.m_carsManager.abort(xid);
+		Middleware.m_roomsManager.abort(xid);
 		
 		log.removeTxLog(xid);
 		log.flushLog();
@@ -101,8 +124,6 @@ public class TransactionManager {
 	 */
 	public int start() throws RemoteException 
 	{	
-		System.out.println("Start of Start(): " + activeTransactions.toString());
-		System.out.println("Log at Start of start(): " + log.getTransactions().toString());
 		
 		cancelRMTimers();
 		int xid = ++xidCounter;
@@ -117,10 +138,7 @@ public class TransactionManager {
 		}
 		crashedTransactions = new ArrayList<>();
 		
-		
 		activeTransactions.add(xid);
-		
-		System.out.println("Log after updating the TM's activateTransactions but not actually updating the log: " + log.getTransactions().toString());
 		
 		transactionMap.put(xid, new ArrayList<String>());
 		toDeleteMap.put(xid, new ArrayList<String>());
@@ -166,6 +184,48 @@ public class TransactionManager {
 		resetRMTimers();
 		return xid;
 	}
+	
+	//crash API
+		public void resetCrashes() throws RemoteException{
+			cancelRMTimers();
+
+			crashMode = 0;
+
+			Middleware.m_flightsManager.resetCrashes();
+			Middleware.m_carsManager.resetCrashes();
+			Middleware.m_roomsManager.resetCrashes();
+
+			Trace.info("Crash modes at the middleware and the resource manager reset to: " + crashMode);
+			resetRMTimers();
+		}
+
+		public void crashMiddleware(int mode) throws RemoteException{
+			cancelRMTimers();
+			crashMode=mode;
+
+			Trace.info("Crash mode at the middleware set to: " + crashMode);
+			resetRMTimers();
+		}
+
+		public void crashResourceManager(String name, int mode) throws RemoteException{
+			cancelRMTimers();
+
+			if(name.equals("flights")){
+				Middleware.m_flightsManager.crashResourceManager(name, mode);
+				Trace.info("Setting crash mode at the Rm: "+name+", to: " + mode);
+			}
+			else if(name.equals("cars")){
+				Middleware.m_carsManager.crashResourceManager(name, mode);
+				Trace.info("Setting crash mode at the Rm: "+name+", to: " + mode);
+			}
+			else if(name.equals("rooms")){
+				Middleware.m_roomsManager.crashResourceManager(name, mode);
+				Trace.info("Setting crash mode at the Rm: "+name+", to: " + mode);
+			}
+
+			resetRMTimers();
+
+		}
 	
 	private void resetRMTimers() throws RemoteException
 	{
@@ -219,7 +279,6 @@ public class TransactionManager {
 			transactionTimers.get(xid).cancel();
 			transactionTimers.remove(xid);
 			
-			
 			Middleware.m_flightsManager.abort(xid);
 			Middleware.m_carsManager.abort(xid);
 			Middleware.m_roomsManager.abort(xid);
@@ -259,12 +318,17 @@ public class TransactionManager {
 		
 		checkValid(xid);
 		
+		System.out.println(Color.cyan + "Customers -- Prepare Initiated " + Color.reset);
+		
+		if (!activeTransactions.contains((Integer) xid)) 
+		{	
+			System.out.println(Color.red + "2PC::Customers -- Prepare FAILED" + Color.reset);
+			return false;
+		}
 		
 		// Writing the latest commit version of the data to temp -- "committing" to temp
-		
 		// Getting the storage version of data from Middleware -- architecture shitting the bed
 		temp = (RMHashMap) customersManager.getMapClone();
-		System.out.println(temp.toString());
 		
 		// Writing local copy to temp -- merging local copy with storage
 		for (String key : transactionMap.get(xid)) 
@@ -290,11 +354,11 @@ public class TransactionManager {
 			}
 		}
 		toDeleteMap.remove((Integer) xid);
-		
-		System.out.println("temp after prepare-commit:" + temp.toString());
-		
-		//Probably buggy shit
+
+		// Writing the latest committed version to disk
 		customersManager.storeMapPersistentNoSwap(temp);
+		
+		System.out.println(Color.cyan + " Customers -- Prepare SUCCESS" + Color.reset);
 		
 		return true;
 	}
@@ -308,6 +372,7 @@ public class TransactionManager {
 		cancelTimer(xid);
 		cancelRMTimers();
 		
+		System.out.println(Color.cyan + "TM::2PC Protocol initiated." + Color.reset);
 		
 		for (int id : crashedTransactions) {
 			try {
@@ -319,14 +384,14 @@ public class TransactionManager {
 		}
 		crashedTransactions = new ArrayList<>();
 
-		// Start sending out vote requests
+		
 		
 		// Creates a timer to wait for votes 
 		Timer votesTimer = new Timer();
 		votesTimer.schedule(new TimerTask() {
 			@Override
 			public void run() {
-				Trace.info("Transaction " + xid + " timed out");
+				Trace.info(Color.red + "Transaction " + xid + " timed out" + Color.reset);
 				try {
 					abort(xid);
 				} 
@@ -345,6 +410,7 @@ public class TransactionManager {
 		{	
 			try
 			{
+				System.out.println(Color.cyan + "TM::VOTE-REQ sent to Flights Manager" + Color.reset);
 				//Throws RemoteException if crashed
 				consensus = consensus & Middleware.m_flightsManager.prepare(xid);	
 				// if this goes through, we reset counter for the next RM and break out of the while loop
@@ -356,7 +422,7 @@ public class TransactionManager {
 				
 				// No response from RM -- we try three times
 				counter++;
-				System.out.println("Flights has crashed. Waiting for reboot. Attempt:" + counter);
+				System.out.println(Color.red + "Flights has crashed. Waiting for reboot. Attempt:" + counter + Color.reset);
 				Thread.sleep(recoveryCheckInterval);
 			} catch (InterruptedException e1) {
 				e1.printStackTrace();
@@ -366,13 +432,14 @@ public class TransactionManager {
 		{	
 			try
 			{
+				System.out.println(Color.cyan + "TM::VOTE-REQ sent to Cars Manager" + Color.reset);
 				consensus = consensus & Middleware.m_carsManager.prepare(xid);	
 				counter = 0;
 				break;
 			}
 			catch (Exception e){try {
 				counter++;
-				System.out.println("Cars has crashed. Waiting for reboot. Attempt:" + counter);
+				System.out.println(Color.red + "Cars has crashed. Waiting for reboot. Attempt:" + counter + Color.reset);
 				Thread.sleep(recoveryCheckInterval);
 			} catch (InterruptedException e1) {
 				e1.printStackTrace();
@@ -382,13 +449,14 @@ public class TransactionManager {
 		{	
 			try
 			{
+				System.out.println(Color.cyan + "TM::VOTE-REQ sent to Rooms Manager" + Color.reset);
 				consensus = consensus & Middleware.m_roomsManager.prepare(xid);	
 				counter = 0;
 				break;
 			}
 			catch (Exception e){try {
 				counter++;
-				System.out.println("Rooms has crashed. Waiting for reboot. Attempt:" + counter);
+				System.out.println(Color.red + "Rooms has crashed. Waiting for reboot. Attempt:" + counter + Color.reset);
 				Thread.sleep(recoveryCheckInterval);
 			} catch (InterruptedException e1) {
 				e1.printStackTrace();
@@ -398,13 +466,14 @@ public class TransactionManager {
 		{	
 			try
 			{
+				System.out.println(Color.cyan + "TM::VOTE-REQ sent to Customers Manager" + Color.reset);
 				consensus = consensus & prepare(xid);	
 				counter = 0;
 				break;
 			}
 			catch (Exception e){try {
 				counter++;
-				System.out.println("Middleware has crashed. Waiting for reboot. Attempt:" + counter);
+				System.out.println(Color.red + "Middleware has crashed. Waiting for reboot. Attempt:" + counter + Color.reset);
 				Thread.sleep(recoveryCheckInterval);
 			} catch (InterruptedException e1) {
 				e1.printStackTrace();
@@ -416,21 +485,29 @@ public class TransactionManager {
 		votesTimer.cancel();
 		
 		
+		// Here we write Flights to log.
+		System.out.println(Color.cyan + "TM::received response from Flights manager" + Color.reset);
+		// Here we write Cars to log.
+		System.out.println(Color.cyan + "TM::received response from Cars manager" + Color.reset);
+		// Here we write Rooms to log.
+		System.out.println(Color.cyan + "TM::received response from Rooms manager" + Color.reset);
 		
 		// If any of the RMs decided to abort, we abort here
 		if(!consensus)
-		{
+		{	
+			System.out.println(Color.red + "TM::2PC Failed -- ABORT" + Color.reset);
 			abort(xid);
 			return false;
 		}
 		
-		
+		System.out.println(Color.cyan + "TM::2PC Vote Success" + Color.reset);
 		
 
 		// TODO Handle crashes here -- WE HAVE TO COMMIT WHATEVER HAPPENS
 		while(counter < 3) {
 			try
 			{
+				System.out.println(Color.cyan + "TM::Sending COMMIT to Flights Manager" + Color.reset);
 				Middleware.m_flightsManager.commit(xid);
 				counter = 0;
 				break;
@@ -439,7 +516,7 @@ public class TransactionManager {
 			{
 				try {
 					counter++;
-					System.out.println("Calling commit on Flights RM failed, sleeping then trying again. Attempt #" + counter );
+					System.out.println(Color.red + "Calling commit on Flights RM failed, sleeping then trying again. Attempt:" + counter + Color.reset);
 					Thread.sleep(recoveryCheckInterval);
 				} catch (InterruptedException e1) {
 					// TODO Auto-generated catch block
@@ -450,6 +527,8 @@ public class TransactionManager {
 		while(counter < 3) {
 			try
 			{
+				System.out.println(Color.cyan + "TM::Sending COMMIT to Cars Manager" + Color.reset);
+
 				Middleware.m_carsManager.commit(xid);
 				counter = 0;
 				break;
@@ -458,7 +537,7 @@ public class TransactionManager {
 			{
 				try {
 					counter++;
-					System.out.println("Calling commit on Cars RM failed, sleeping then trying again. Attempt #" + counter );
+					System.out.println(Color.red + "Calling commit on Cars RM failed, sleeping then trying again. Attempt:" + counter + Color.reset );
 					Thread.sleep(recoveryCheckInterval);
 				} catch (InterruptedException e1) {
 					// TODO Auto-generated catch block
@@ -469,6 +548,8 @@ public class TransactionManager {
 		while(counter < 3) {
 			try
 			{
+				System.out.println(Color.cyan + "TM::Sending COMMIT to Rooms Manager" + Color.reset);
+
 				Middleware.m_roomsManager.commit(xid);
 				counter = 0;
 				break;
@@ -477,7 +558,7 @@ public class TransactionManager {
 			{
 				try {
 					counter++;
-					System.out.println("Calling commit on Rooms RM failed, sleeping then trying again. Attempt #" + counter );
+					System.out.println(Color.red + "Calling commit on Rooms RM failed, sleeping then trying again. Attempt:" + counter + Color.reset);
 					Thread.sleep(recoveryCheckInterval);
 				} catch (InterruptedException e1) {
 					// TODO Auto-generated catch block
@@ -486,11 +567,11 @@ public class TransactionManager {
 			}
 		}
 		
+		System.out.println(Color.cyan + "TM::Sending COMMIT to Customers Manager" + Color.reset);
 		// Perform the actual commit of customers
 		customersManager.fileManagerSwap();
 		customersManager.updateStorage();
 		
-
 		activeTransactions.remove((Integer) xid);
 		transactionMap.remove(xid);
 		toDeleteMap.remove(xid);
@@ -500,7 +581,7 @@ public class TransactionManager {
 		log.removeTxLog(xid);
 		log.flushLog();
 		
-		System.out.println("Transaction: " + xid + " has commited");
+		System.out.println(Color.purp + "TM::Transaction: " + xid + " has commited" + Color.reset);
 		resetRMTimers();
 		return true;
 	}
@@ -509,7 +590,7 @@ public class TransactionManager {
 	
 	
 	
-	protected RMItem readDataCopy(int xid, String key)
+	private RMItem readDataCopy(int xid, String key)
 	{
 		synchronized(m_dataCopy) {
 			RMItem item = m_dataCopy.get(key);
@@ -521,14 +602,14 @@ public class TransactionManager {
 	}
 
 
-	protected void writeDataCopy(int xid, String key, RMItem value)
+	private void writeDataCopy(int xid, String key, RMItem value)
 	{
 		synchronized(m_dataCopy) {
 			m_dataCopy.put(key, value);
 		}
 	}
 
-	protected void removeDataCopy(int xid, String key)
+	private void removeDataCopy(int xid, String key)
 	{
 		synchronized(m_dataCopy) {
 			m_dataCopy.remove(key);

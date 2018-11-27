@@ -39,6 +39,7 @@ public class ResourceManager implements IResourceManager
 	
 	private RMHashMap temp;
 	
+	private int crashMode = 0;
 
 	public ResourceManager(String p_name)
 	{
@@ -65,15 +66,6 @@ public class ResourceManager implements IResourceManager
 		}
 		activeTransactions = (ArrayList<Integer>) log.getTransactions().clone();
 		
-		
-		
-		
-//		while(!activeTransactions.isEmpty()){
-//			crashedTransactions.add(activeTransactions.get(0));
-//			activeTransactions.remove(0);
-//		}
-		
-		activeTransactions = new ArrayList<>();
 
 		// Global timer
 		timer = new Timer();
@@ -135,6 +127,21 @@ public class ResourceManager implements IResourceManager
 		log.updateLog(xid);
 		log.flushLog();
 	}
+	
+	//crash API
+	public void resetCrashes() throws RemoteException{
+		crashMode = 0;
+		Trace.info("Crash mode at the resource manager: "+this.m_name+", reset to: " + crashMode);
+	}
+
+	public void crashMiddleware(int mode) throws RemoteException{
+	}
+
+	public void crashResourceManager(String name, int mode) throws RemoteException{
+		crashMode=mode;
+		
+		Trace.info("Crash mode at the resource manager: "+this.m_name+", set to: " + crashMode);
+	}
 
 	
 	// Updated - Milestone 3
@@ -158,7 +165,7 @@ public class ResourceManager implements IResourceManager
 		transactionMap.remove(xid);
 		toDeleteMap.remove(xid);
 		
-		Trace.info("Transaction-" + xid + " has committed at the RM");
+		Trace.info(Color.cyan + "Transaction-" + xid + " has committed at the RM" + Color.reset);
 		
 		log.removeTxLog(xid);
 		log.flushLog();
@@ -209,8 +216,12 @@ public class ResourceManager implements IResourceManager
 	{
 		cancelTimer();
 		
+		System.out.println(Color.cyan + "2PC::" + m_name + " -- Prepare Initiated" + Color.reset);
+		
 		
 		if (!activeTransactions.contains((Integer) xid)) {
+			
+			System.out.println(Color.red + "2PC::" + m_name + " -- Prepare FAILED" + Color.reset);
 			return false;
 		}
 		
@@ -244,6 +255,8 @@ public class ResourceManager implements IResourceManager
 		toDeleteMap.remove((Integer) xid);
 		
 		m_fileManager.writePersistentNoSwap(temp);
+		
+		System.out.println(Color.cyan + "2PC::" + m_name + " -- Prepare SUCCESS" + Color.reset);
 		resetTimer();
 		return true;
 	}

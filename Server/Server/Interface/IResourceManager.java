@@ -54,6 +54,11 @@ public interface IResourceManager extends Remote
     
     public boolean changeObject(int xid, String key, int count) throws RemoteException;
 	
+    //functions for crash API
+    public void resetCrashes() throws RemoteException;
+    public void crashMiddleware(int mode) throws RemoteException;
+    public void crashResourceManager(String name, int mode) throws RemoteException;
+    
     /**
      * Add seats to a flight.
      *

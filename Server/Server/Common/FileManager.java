@@ -48,7 +48,7 @@ public class FileManager
 
 			if (masterRecord.length() == 0)
 			{
-			    System.out.println("file empty");
+			    System.out.println("Master Record empty, creating new one");
 			    bw = new BufferedWriter(new FileWriter(masterRecord));
 			    bw.write("A");
 			    bw.close();
@@ -66,7 +66,6 @@ public class FileManager
 	
 	public RMHashMap getPersistentData() throws Exception
 	{
-		System.out.println(fileNamePrefix);
 		FileInputStream fis = new FileInputStream(fileNamePrefix+"_"+(char) (131 - filePointer));
 		ObjectInputStream ois = new ObjectInputStream(fis);
 		RMHashMap ret = (RMHashMap) ois.readObject();
