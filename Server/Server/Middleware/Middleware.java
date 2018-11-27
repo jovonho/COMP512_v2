@@ -25,7 +25,7 @@ public abstract class Middleware implements IResourceManager {
 	
 	protected TransactionManager txManager = null;
 	
-	protected FileManager m_fileManager;
+	FileManager m_fileManager;
 	
 	// Inactivity timeout variables
 	private Timer timer;
@@ -92,7 +92,11 @@ public abstract class Middleware implements IResourceManager {
 	}
 	
 	public boolean prepare(int xid) {
-		return false;
+		return true;
+	}
+	
+	public RMHashMap getMapClone() throws RemoteException {
+		return (RMHashMap) m_data.clone();
 	}
 	
 	public void shutdown() throws RemoteException {
@@ -116,6 +120,33 @@ public abstract class Middleware implements IResourceManager {
 	public void storeMapPersistent(){
 		try {
 			m_fileManager.writePersistentData(m_data);
+		} catch (Exception e) {
+			e.printStackTrace();
+		}
+	}
+	
+	public void storeMapPersistentNoSwap(RMHashMap data) {
+		try {
+
+			m_fileManager.writePersistentNoSwap(data);
+			
+			Trace.info("m_data: " + m_data.toString());;
+		} catch (Exception e) {
+			e.printStackTrace();
+		}
+	}
+	
+	public void fileManagerSwap() {
+		try {
+			m_fileManager.swap();
+		} catch (Exception e) {
+			e.printStackTrace();
+		}
+	}
+	
+	public void updateStorage() {
+		try {
+			m_data = m_fileManager.getPersistentData();
 		} catch (Exception e) {
 			e.printStackTrace();
 		}

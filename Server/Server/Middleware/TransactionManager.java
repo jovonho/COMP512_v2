@@ -20,6 +20,8 @@ public class TransactionManager {
 	 * Time to live.
 	 */
 	final int TTL = 40000;
+	
+	final int recoveryCheckInterval = 10000;
 
 	private LockManager lockManager = new LockManager();
 
@@ -33,16 +35,17 @@ public class TransactionManager {
 	
 	private Map<Integer, Timer> transactionTimers = new HashMap<Integer, Timer>();
 	
-	private IResourceManager customersManager = null;
+	private Middleware customersManager = null;
 	
 	private TransactionManagerLog log;
 	
 	private ArrayList<Integer> crashedTransactions = new ArrayList<Integer>();
 	
 	private boolean justBooted;
+	private RMHashMap temp;
 
 	@SuppressWarnings("unchecked")
-	public TransactionManager(IResourceManager custs)
+	public TransactionManager(Middleware custs)
 	{
 		try 
 		{
@@ -251,6 +254,52 @@ public class TransactionManager {
 		return false;
 	}
 	
+	// transactionManager holds localCopy of customers so it will coordinate a prepare with the middleware whihc holds the storage version of customers
+	private boolean prepare(int xid) throws InvalidTransactionException, TransactionAbortedException, RemoteException {
+		
+		checkValid(xid);
+		
+		
+		// Writing the latest commit version of the data to temp -- "committing" to temp
+		
+		// Getting the storage version of data from Middleware -- architecture shitting the bed
+		temp = (RMHashMap) customersManager.getMapClone();
+		System.out.println(temp.toString());
+		
+		// Writing local copy to temp -- merging local copy with storage
+		for (String key : transactionMap.get(xid)) 
+		{
+			RMItem toCommit = readDataCopy(xid, key);
+			if (toCommit == null) {
+				break;
+			}
+			else {
+				temp.put(key, toCommit);
+			}
+			removeDataCopy(xid, key);
+		}
+		
+		transactionMap.remove((Integer) xid);
+		
+		for (String key : toDeleteMap.get(xid)) {
+			if (key == null) {
+				break;
+			}
+			else {
+				temp.remove(key);
+			}
+		}
+		toDeleteMap.remove((Integer) xid);
+		
+		System.out.println("temp after prepare-commit:" + temp.toString());
+		
+		//Probably buggy shit
+		customersManager.storeMapPersistentNoSwap(temp);
+		
+		return true;
+	}
+
+	
 
 	// Updated - Milestone 3
 	public boolean commit(int xid) throws RemoteException, InvalidTransactionException, TransactionAbortedException
@@ -290,100 +339,146 @@ public class TransactionManager {
 		
 		boolean consensus = true;
 		
-		while(true)
+		
+		int counter = 0;
+		while(counter < 3)
 		{	
 			try
 			{
+				//Throws RemoteException if crashed
 				consensus = consensus & Middleware.m_flightsManager.prepare(xid);	
+				// if this goes through, we reset counter for the next RM and break out of the while loop
+				counter = 0;
 				break;
 			}
-			catch (Exception e){try {
-				System.out.println("Flights has crashed. Waiting for reboot.");
-				Thread.sleep(1000);
+			catch (Exception e){
+				try {
+				
+				// No response from RM -- we try three times
+				counter++;
+				System.out.println("Flights has crashed. Waiting for reboot. Attempt:" + counter);
+				Thread.sleep(recoveryCheckInterval);
 			} catch (InterruptedException e1) {
 				e1.printStackTrace();
 			}}
 		}
-		while(true)
+		while(counter < 3)
 		{	
 			try
 			{
 				consensus = consensus & Middleware.m_carsManager.prepare(xid);	
+				counter = 0;
 				break;
 			}
 			catch (Exception e){try {
-				System.out.println("Cars has crashed. Waiting for reboot.");
-				Thread.sleep(1000);
+				counter++;
+				System.out.println("Cars has crashed. Waiting for reboot. Attempt:" + counter);
+				Thread.sleep(recoveryCheckInterval);
 			} catch (InterruptedException e1) {
 				e1.printStackTrace();
 			}}
 		}
-		while(true)
+		while(counter < 3)
 		{	
 			try
 			{
 				consensus = consensus & Middleware.m_roomsManager.prepare(xid);	
+				counter = 0;
 				break;
 			}
 			catch (Exception e){try {
-				System.out.println("Rooms has crashed. Waiting for reboot.");
-				Thread.sleep(1000);
+				counter++;
+				System.out.println("Rooms has crashed. Waiting for reboot. Attempt:" + counter);
+				Thread.sleep(recoveryCheckInterval);
+			} catch (InterruptedException e1) {
+				e1.printStackTrace();
+			}}
+		}
+		while(counter < 3)
+		{	
+			try
+			{
+				consensus = consensus & prepare(xid);	
+				counter = 0;
+				break;
+			}
+			catch (Exception e){try {
+				counter++;
+				System.out.println("Middleware has crashed. Waiting for reboot. Attempt:" + counter);
+				Thread.sleep(recoveryCheckInterval);
 			} catch (InterruptedException e1) {
 				e1.printStackTrace();
 			}}
 		}
 		
+		// At this point we have a consensus
+		
 		votesTimer.cancel();
+		
+		
+		
+		// If any of the RMs decided to abort, we abort here
 		if(!consensus)
 		{
 			abort(xid);
 			return false;
 		}
+		
+		
+		
 
-		// INDECISON PERIOD
 		// TODO Handle crashes here -- WE HAVE TO COMMIT WHATEVER HAPPENS
-		while(true) {
+		while(counter < 3) {
 			try
 			{
 				Middleware.m_flightsManager.commit(xid);
+				counter = 0;
 				break;
 			}
 			catch (Exception e)
 			{
 				try {
-					Thread.sleep(1000);
+					counter++;
+					System.out.println("Calling commit on Flights RM failed, sleeping then trying again. Attempt #" + counter );
+					Thread.sleep(recoveryCheckInterval);
 				} catch (InterruptedException e1) {
 					// TODO Auto-generated catch block
 					e1.printStackTrace();
 				}
 			}
 		}
-		while(true) {
+		while(counter < 3) {
 			try
 			{
 				Middleware.m_carsManager.commit(xid);
+				counter = 0;
 				break;
 			}
 			catch (Exception e)
 			{
 				try {
-					Thread.sleep(1000);
+					counter++;
+					System.out.println("Calling commit on Cars RM failed, sleeping then trying again. Attempt #" + counter );
+					Thread.sleep(recoveryCheckInterval);
 				} catch (InterruptedException e1) {
 					// TODO Auto-generated catch block
 					e1.printStackTrace();
 				}
 			}
 		}
-		while(true) {
+		while(counter < 3) {
 			try
 			{
 				Middleware.m_roomsManager.commit(xid);
+				counter = 0;
 				break;
 			}
 			catch (Exception e)
 			{
 				try {
-					Thread.sleep(1000);
+					counter++;
+					System.out.println("Calling commit on Rooms RM failed, sleeping then trying again. Attempt #" + counter );
+					Thread.sleep(recoveryCheckInterval);
 				} catch (InterruptedException e1) {
 					// TODO Auto-generated catch block
 					e1.printStackTrace();
@@ -391,43 +486,11 @@ public class TransactionManager {
 			}
 		}
 		
-		//commit customers:
-		// Iterate through the customers the transaction has created or modified and write them to storage.
-		for (String key : transactionMap.get(xid)) 
-		{
-			RMItem toCommit = readDataCopy(xid, key);
-			if (toCommit == null) {
-				break;
-			}
-			else {
-				customersManager.putItem(xid, key, toCommit);
-			}
-			Trace.info("@commit time: removing " + key + " from local copy");
-			removeDataCopy(xid, key);
-		}
+		// Perform the actual commit of customers
+		customersManager.fileManagerSwap();
+		customersManager.updateStorage();
 		
-		// Iterate through the items the transaction marked for deletion and remove them from storage.
-		/**
-		 * Had to stop removing the items as we were iterating over the ArrayList because we would get the exception linked below.
-		 * Instead we simply remove the whole Arraylist once we're done deleting each item inside of it.
-		 * Could this cause errors with other transactions trying to do stuff concurrently?
-		 * see https://stackoverflow.com/questions/223918/iterating-through-a-collection-avoiding-concurrentmodificationexception-when-mo
-		 */
-		for (String key : toDeleteMap.get(xid)) {
-			if (key == null) {
-				break;
-			}
-			else {
-				Trace.info(key + " found in delete map, should be removed.");
-				customersManager.deleteData(xid, key);
-			}
-		}
-		
-		customersManager.storeMapPersistent();
 
-		
-		// NOTE: Need the cast to Integer to remove the actual Integer xid, else since xid is an int it will consider it an index
-		// This will lead to ArrayIndexOutOfBoundsException
 		activeTransactions.remove((Integer) xid);
 		transactionMap.remove(xid);
 		toDeleteMap.remove(xid);

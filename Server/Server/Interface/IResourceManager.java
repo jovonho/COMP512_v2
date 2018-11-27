@@ -29,6 +29,9 @@ public interface IResourceManager extends Remote
 	
 
 
+	Object m_data = null;
+	FileManager m_fileManager = null;
+
 	public RMItem getItem(int xid, String key)
 	throws RemoteException;
 	
@@ -288,4 +291,12 @@ public interface IResourceManager extends Remote
 	public void cancelTimer() throws RemoteException;
 
 	public boolean prepare(int xid) throws RemoteException;
+
+//	public Object getMapClone() throws RemoteException;
+//
+//	public void storeMapPersistentNoSwap(RMHashMap temp) throws RemoteException;
+	
+	public void fileManagerSwap() throws RemoteException;
+	
+	public void updateStorage() throws RemoteException;
 }

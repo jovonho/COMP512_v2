@@ -63,8 +63,11 @@ public class ResourceManager implements IResourceManager
 		{
 			e.printStackTrace();
 		}
-//		activeTransactions = (ArrayList<Integer>) log.getTransactions().clone();
-//		
+		activeTransactions = (ArrayList<Integer>) log.getTransactions().clone();
+		
+		
+		
+		
 //		while(!activeTransactions.isEmpty()){
 //			crashedTransactions.add(activeTransactions.get(0));
 //			activeTransactions.remove(0);
@@ -207,11 +210,6 @@ public class ResourceManager implements IResourceManager
 		cancelTimer();
 		
 		
-//		if(crashedTransactions.contains(xid)){
-//			crashedTransactions.remove((Integer) xid);
-//			return false;
-//		}
-		
 		if (!activeTransactions.contains((Integer) xid)) {
 			return false;
 		}
@@ -243,7 +241,6 @@ public class ResourceManager implements IResourceManager
 				temp.remove(key);
 			}
 		}
-		
 		toDeleteMap.remove((Integer) xid);
 		
 		m_fileManager.writePersistentNoSwap(temp);
@@ -1025,6 +1022,38 @@ public class ResourceManager implements IResourceManager
 	@Override
 	public void storeMapPersistent() throws RemoteException{
 		// TODO Auto-generated method stub
+		
+	}
+
+
+//	@Override
+//	public RMHashMap getMapClone() throws RemoteException {
+//		// TODO Auto-generated method stub
+//		return null;
+//	}
+//
+//
+//	@Override
+//	public void storeMapPersistentNoSwap(RMHashMap temp) throws RemoteException {
+//		// TODO Auto-generated method stub
+//		
+//	}
+
+
+	@Override
+	public void fileManagerSwap() throws RemoteException {
+		// TODO Auto-generated method stub
+		
+	}
+
+
+	@Override
+	public void updateStorage() throws RemoteException {
+		try {
+			m_data = m_fileManager.getPersistentData();
+		} catch (Exception e) {
+			e.printStackTrace();
+		}
 		
 	}
 }
