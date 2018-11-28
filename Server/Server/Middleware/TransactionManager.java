@@ -132,7 +132,7 @@ public class TransactionManager {
 		Middleware.m_carsManager.abortCrashedTx(xid);
 		Middleware.m_roomsManager.abortCrashedTx(xid);
 		
-		System.out.println(Color.yellow + "Transaction "  +xid + " aborted." + Color.reset);
+		System.out.println(Color.yellow + "Transaction "  + xid + " aborted." + Color.reset);
 		
 		log.removeTxLog(xid);
 		log.flushLog();
@@ -564,7 +564,7 @@ public class TransactionManager {
 		}
 		
 		if (counter == 3) {
-			System.out.println(Color.red + "2PC::Failed to call prepare on Room	s -- ABORT " + Color.reset);
+			System.out.println(Color.red + "2PC::Failed to call prepare on Rooms -- ABORT " + Color.reset);
 			abort(xid);	
 			return false;
 		}
@@ -606,8 +606,7 @@ public class TransactionManager {
 		long spinTime = 10000;
 		int consensus = 0;
 		
-		// TODO maybe change the way we while loop in this?
-		// Maybe better to have a counter again
+
 		counter = 0;
 		while(counter < 3) {
 			
@@ -615,9 +614,11 @@ public class TransactionManager {
 			{
 				System.out.println(Color.yellow + "2PC::Checking for Flights vote" + Color.reset);
 				
+				// I think if the RM is up but hasn't changed its vote, we will stay in this loop until the votesTimer expires
 				if (Middleware.m_flightsManager.getVote() != -1) 
 				{
 					consensus += Middleware.m_flightsManager.getVote();	
+					System.out.println(Color.cyan + "2PC::Flights vote received" + Color.reset);
 					counter = 0;
 					break;
 				}
@@ -634,7 +635,7 @@ public class TransactionManager {
 					
 					//Manually re-lookup the RM from the registry
 					Registry registry = LocateRegistry.getRegistry("lab2-4.cs.mcgill.ca", 1099);
-					Middleware.m_flightsManager = (IResourceManager) registry.lookup("group33Rooms");
+					Middleware.m_flightsManager = (IResourceManager) registry.lookup("group33Flights");
 					
 				} 
 				catch (Exception e1) 
@@ -645,19 +646,13 @@ public class TransactionManager {
 				counter++;
 			}
 		}
-		
-		while(Middleware.m_flightsManager.getVote() == -1) 
+		if (counter == 3) 
 		{
-			try 
-			{
-				System.out.println("Vote is " + Middleware.m_flightsManager.getVote() );
-				Thread.sleep(spinTime);
-			} 
-			catch (InterruptedException e) 
-			{
-				e.printStackTrace();
-			}
+			System.out.println(Color.red + "2PC::Failed to receive Flights vote -- ABORT " + Color.reset);
+			abort(xid);	
+			return false;
 		}
+		
 		
 		//crash API
 		if(crashMode==3)
@@ -667,48 +662,106 @@ public class TransactionManager {
 		}
 				
 		
-		while(Middleware.m_carsManager.getVote() == -1) 
-		{
+		counter = 0;
+		while(counter < 3) {
+			
 			try 
 			{
-				System.out.println(Color.yellow + "Checking for Cars vote" + Color.reset);
-				Thread.sleep(spinTime);
-			} 
-			catch (InterruptedException e) 
+				System.out.println(Color.yellow + "2PC::Checking for Cars vote" + Color.reset);
+				
+				// I think if the RM is up but hasn't changed its vote, we will stay in this loop until the votesTimer expires
+				if (Middleware.m_carsManager.getVote() != -1) 
+				{
+					consensus += Middleware.m_carsManager.getVote();	
+					System.out.println(Color.cyan + "2PC::Cars vote received" + Color.reset);
+					counter = 0;
+					break;
+				}
+				
+			}
+			catch (Exception e) 
 			{
-				e.printStackTrace();
+				System.out.println(Color.red + "2PC::Can't get Cars vote. Attempt " + counter + Color.reset);
+				
+				try 
+				{
+					Thread.sleep(spinTime);
+					System.out.println(Color.yellow + "Attempting to rebind Cars" + Color.reset);
+					
+					//Manually re-lookup the RM from the registry
+					Registry registry = LocateRegistry.getRegistry("lab1-10.cs.mcgill.ca", 1099);
+					Middleware.m_carsManager = (IResourceManager) registry.lookup("group33Cars");
+					
+				} 
+				catch (Exception e1) 
+				{
+					System.out.println(Color.red + "Rebind failed" + Color.reset);
+					e1.printStackTrace();
+				}
+				counter++;
 			}
 		}
-		consensus += Middleware.m_carsManager.getVote();
-		
-		
-		while(Middleware.m_roomsManager.getVote() == -1) 
+		if (counter == 3) 
 		{
+			System.out.println(Color.red + "2PC::Failed to receive Cars vote -- ABORT " + Color.reset);
+			abort(xid);	
+			return false;
+		}
+		
+		
+		counter = 0;
+		while(counter < 3) {
+			
 			try 
 			{
-				System.out.println(Color.yellow + "Checking for Rooms vote" + Color.reset);
-				Thread.sleep(spinTime);
-			} 
-			catch (InterruptedException e) 
+				System.out.println(Color.yellow + "2PC::Checking for Rooms vote" + Color.reset);
+				
+				// I think if the RM is up but hasn't changed its vote, we will stay in this loop until the votesTimer expires
+				if (Middleware.m_roomsManager.getVote() != -1) 
+				{
+					consensus += Middleware.m_roomsManager.getVote();	
+					System.out.println(Color.cyan + "2PC::Rooms vote received" + Color.reset);
+
+					counter = 0;
+					break;
+				}
+				
+			}
+			catch (Exception e) 
 			{
-				e.printStackTrace();
+				System.out.println(Color.red + "2PC::Can't get Rooms vote. Attempt " + counter + Color.reset);
+				
+				try 
+				{
+					Thread.sleep(spinTime);
+					System.out.println(Color.yellow + "Attempting to rebind Rooms" + Color.reset);
+					
+					//Manually re-lookup the RM from the registry
+					Registry registry = LocateRegistry.getRegistry("open-4.cs.mcgill.ca", 1099);
+					Middleware.m_roomsManager = (IResourceManager) registry.lookup("group33Rooms");
+					
+				} 
+				catch (Exception e1) 
+				{
+					System.out.println(Color.red + "Rebind failed" + Color.reset);
+					e1.printStackTrace();
+				}
+				counter++;
 			}
 		}
-		consensus += Middleware.m_roomsManager.getVote();
-		
-		while(vote == -1) 
+		if (counter == 3) 
 		{
-			try 
-			{
-				System.out.println(Color.yellow + "Checking for Customers vote" + Color.reset);
-				Thread.sleep(spinTime);
-			} 
-			catch (InterruptedException e) 
-			{
-				e.printStackTrace();
-			}
+			System.out.println(Color.red + "2PC::Failed to receive Rooms vote -- ABORT " + Color.reset);
+			abort(xid);	
+			return false;
 		}
+		
+		
+		//Vote for Customers is DE FACTO set by calling prepare earlier. 
+		System.out.println(Color.yellow + "Checking for Customers vote" + Color.reset);
 		consensus += vote;
+		System.out.println(Color.cyan + "2PC::Customers vote received" + Color.reset);
+
 
 		votesTimer.cancel();
 		
@@ -721,8 +774,6 @@ public class TransactionManager {
 		
 		
 		
-
-		
 		if(consensus != 4)
 		{
 			System.out.println(Color.red + "2PC::Consensus was not reached: " + consensus + "/4 Only" + Color.reset);
@@ -731,43 +782,86 @@ public class TransactionManager {
 			return false;
 		}
 		
-		//Crash mode 5
+		
+		System.out.println(Color.cyan + "2PC::Consensus reached -- WE ARE COMMITING" + Color.reset);
+		
+		//Possibly Write COMMIT log ???
 		
 
 		
-
 		counter = 0;
-		
-		while(counter < 3) 
-		{
+		while(counter < 3) {
 			try
 			{
 				System.out.println(Color.yellow + "2PC::Sending COMMIT to Flights Manager" + Color.reset);
 				Middleware.m_flightsManager.commit(xid);
 				System.out.println(Color.cyan + "2PC::COMMIT sent to Flights successfully" + Color.reset);
-				counter = 0;
 				break;
 			}
 			catch (Exception e)
 			{
+				counter++;
+				System.out.println(Color.red + "2PC::Could not send COMMIT to Flights. Attempt " + counter  + Color.reset);
+				
 				try 
 				{
-					counter++;
-					if (counter == 3) 
-					{
-						System.out.println(Color.red + "2PC::Tried 3 times to call commit on Flights, data will be inaccessible (but not inconsistent). Moving on..." +  Color.reset);
-						break;
-					}
-					else {
-						System.out.println(Color.red + "2PC::Flights could not be reached. Attempt " + counter + Color.reset);
-						Thread.sleep(recoveryCheckInterval);						
-					}
+					Thread.sleep(recoveryCheckInterval);
+					System.out.println(Color.yellow + "Attempting to rebind Flights" + Color.reset);
+					
+					//Manually re-lookup the RM from the registry
+					Registry registry = LocateRegistry.getRegistry("lab2-4.cs.mcgill.ca", 1099);
+					Middleware.m_flightsManager = (IResourceManager) registry.lookup("group33Flights");
+					
 				} 
-				catch (InterruptedException e1) 
+				catch (Exception e1) 
 				{
+					System.out.println(Color.red + "Rebind failed" + Color.reset);
 					e1.printStackTrace();
 				}
 			}
+		}
+		if (counter == 3) {
+			System.out.println(Color.red + "2PC::Failed to send COMMIT to Flights. Data will be inaccessible (but not inconsistent)." +  Color.reset);
+			abort(xid);	
+			return false;
+		}
+
+		
+		counter = 0;
+		while(counter < 3) {
+			try
+			{
+				System.out.println(Color.yellow + "2PC::Sending COMMIT to Cars Manager" + Color.reset);
+				Middleware.m_carsManager.commit(xid);
+				System.out.println(Color.cyan + "2PC::COMMIT sent to Cars successfully" + Color.reset);
+				break;
+			}
+			catch (Exception e)
+			{
+				counter++;
+				System.out.println(Color.red + "2PC::Could not send COMMIT to Cars. Attempt " + counter  + Color.reset);
+				
+				try 
+				{
+					Thread.sleep(recoveryCheckInterval);
+					System.out.println(Color.yellow + "Attempting to rebind Cars" + Color.reset);
+					
+					//Manually re-lookup the RM from the registry
+					Registry registry = LocateRegistry.getRegistry("lab1-10.cs.mcgill.ca", 1099);
+					Middleware.m_carsManager = (IResourceManager) registry.lookup("group33Cars");
+					
+				} 
+				catch (Exception e1) 
+				{
+					System.out.println(Color.red + "Rebind failed" + Color.reset);
+					e1.printStackTrace();
+				}
+			}
+		}
+		if (counter == 3) {
+			System.out.println(Color.red + "2PC::Failed to send COMMIT to Cars. Data will be inaccessible (but not inconsistent)." +  Color.reset);
+			abort(xid);	
+			return false;
 		}
 		
 		
@@ -779,79 +873,59 @@ public class TransactionManager {
 		}
 		
 	
-		while(counter < 3) 
-		{
-			try
-			{
-				System.out.println(Color.yellow + "2PC::Sending COMMIT to Cars Manager" + Color.reset);
-				Middleware.m_carsManager.commit(xid);
-				System.out.println(Color.cyan + "2PC::COMMIT sent to Cars successfully" + Color.reset);
-				counter = 0;
-				break;
-			}
-			catch (Exception e)
-			{
-				try 
-				{
-					counter++;
-					if (counter == 3) 
-					{
-						System.out.println(Color.red + "2PC::Tried 3 times to call commit on Cars. Data will be inaccessible (but not inconsistent). Moving on..." +  Color.reset);
-						break;
-					}
-					else {
-						System.out.println(Color.red + "2PC::Cars could not be reached. Attempt " + counter + Color.reset);
-						Thread.sleep(recoveryCheckInterval);						
-					}
-				} 
-				catch (InterruptedException e1) 
-				{
-					e1.printStackTrace();
-				}
-			}
-		}
-		
-		while(counter < 3) 
-		{
+		counter = 0;
+		while(counter < 3) {
 			try
 			{
 				System.out.println(Color.yellow + "2PC::Sending COMMIT to Rooms Manager" + Color.reset);
 				Middleware.m_roomsManager.commit(xid);
 				System.out.println(Color.cyan + "2PC::COMMIT sent to Rooms successfully" + Color.reset);
-				counter = 0;
 				break;
 			}
 			catch (Exception e)
 			{
+				counter++;
+				System.out.println(Color.red + "2PC::Could not send COMMIT to Rooms. Attempt " + counter  + Color.reset);
+				
 				try 
 				{
-					counter++;
-					if (counter == 3) 
-					{
-						System.out.println(Color.red + "2PC::Tried 3 times to call commit on Rooms, data will be inaccessible (but not inconsistent). Moving on..." +  Color.reset);
-						break;
-					}
-					else {
-						System.out.println(Color.red + "2PC::Room could not be reached. Attempt " + counter + Color.reset);
-						Thread.sleep(recoveryCheckInterval);						
-					}
+					Thread.sleep(recoveryCheckInterval);
+					System.out.println(Color.yellow + "Attempting to rebind Rooms" + Color.reset);
+					
+					//Manually re-lookup the RM from the registry
+					Registry registry = LocateRegistry.getRegistry("open-4.cs.mcgill.ca", 1099);
+					Middleware.m_roomsManager = (IResourceManager) registry.lookup("group33Rooms");
+					
 				} 
-				catch (InterruptedException e1) 
+				catch (Exception e1) 
 				{
+					System.out.println(Color.red + "Rebind failed" + Color.reset);
 					e1.printStackTrace();
 				}
 			}
 		}
+		if (counter == 3) {
+			System.out.println(Color.red + "2PC::Failed to send COMMIT to Rooms. Data will be inaccessible (but not inconsistent)." +  Color.reset);
+			abort(xid);	
+			return false;
+		}
 		
 		
 		System.out.println(Color.yellow + "2PC::Sending COMMIT to Customers Manager" + Color.reset);
-		// Perform the actual commit of customers
+		
+		// Perform the actual commit of customers == swapping to other disk file
 		customersManager.fileManagerSwap();
 		customersManager.updateStorage();
+		
 		System.out.println(Color.cyan + "2PC::COMMIT sent to Customers successfully" + Color.reset);
 		
+		log.removeTxLog(xid);
+		log.flushLog();
+		
+		
 		//crash API
-		if(crashMode==7){
+		if(crashMode==7)
+		{
 			System.out.println("Crash for mode: " + crashMode);
 			System.exit(1);
 		}
@@ -861,9 +935,6 @@ public class TransactionManager {
 		toDeleteMap.remove(xid);
 		lockManager.UnlockAll(xid);
 		transactionTimers.remove(xid);
-		
-		log.removeTxLog(xid);
-		log.flushLog();
 		
 		System.out.println(Color.purp + "TM::Transaction: " + xid + " has commited" + Color.reset);
 		resetRMTimers();
