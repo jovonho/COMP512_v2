@@ -480,7 +480,6 @@ public class TransactionManager {
 				catch (Exception e1) 
 				{
 					System.out.println(Color.red + "Rebind failed" + Color.reset);
-					e1.printStackTrace();
 				}
 				counter++;
 			}
@@ -519,7 +518,6 @@ public class TransactionManager {
 				catch (Exception e1) 
 				{
 					System.out.println(Color.red + "Rebind failed" + Color.reset);
-					e1.printStackTrace();
 				}
 				counter++;
 			}
@@ -557,7 +555,6 @@ public class TransactionManager {
 				catch (Exception e1) 
 				{
 					System.out.println(Color.red + "Rebind failed" + Color.reset);
-					e1.printStackTrace();
 				}
 				counter++;
 			}
@@ -641,7 +638,6 @@ public class TransactionManager {
 				catch (Exception e1) 
 				{
 					System.out.println(Color.red + "Rebind failed" + Color.reset);
-					e1.printStackTrace();
 				}
 				counter++;
 			}
@@ -696,7 +692,6 @@ public class TransactionManager {
 				catch (Exception e1) 
 				{
 					System.out.println(Color.red + "Rebind failed" + Color.reset);
-					e1.printStackTrace();
 				}
 				counter++;
 			}
@@ -744,7 +739,6 @@ public class TransactionManager {
 				catch (Exception e1) 
 				{
 					System.out.println(Color.red + "Rebind failed" + Color.reset);
-					e1.printStackTrace();
 				}
 				counter++;
 			}

@@ -45,6 +45,8 @@ public class ResourceManager implements IResourceManager
 	
 	private int lastXid;
 	
+	public boolean flag=false;
+	
 	Status status;
 
 	public ResourceManager(String p_name)
@@ -105,12 +107,15 @@ public class ResourceManager implements IResourceManager
 				e.printStackTrace();
 			}
 		}
-		else if(status == Status.PersistentMemoryWritten){
-				sendVoteResponse(1);
-				activeTransactions.add(log.getXid());
+		else if(status == Status.PersistentMemoryWritten)
+		{
+			activeTransactions.add(log.getXid());
+			sendVoteResponse(1);
+			flag=true;
 		}
 		
 		log.clearStatus();
+		System.out.println("vote is " + vote);
 	}
 	
 	
@@ -181,7 +186,13 @@ public class ResourceManager implements IResourceManager
 		}
 		
 		// updating our storage to be the most recent version
-		m_data = (RMHashMap) temp.clone();
+		try {
+			m_data = (RMHashMap) m_fileManager.getPersistentData().clone();
+		} catch (Exception e) {
+			System.out.println("Could not get persistent data");
+		}
+		
+		System.out.println("new m_data is" + m_data.toString());
 		
 		
 		activeTransactions.remove((Integer) xid); 
@@ -291,37 +302,38 @@ public class ResourceManager implements IResourceManager
 			}
 			return false;
 		}
-
-		temp = (RMHashMap) m_data.clone();
 		
-		
-		
-		for (String key : transactionMap.get(xid)) 
+		if(!flag)
 		{
-			RMItem toCommit = readDataCopy(xid, key);
-			if (toCommit == null) {
-				break;
-			}
-			else {
-				temp.put(key, toCommit);
-			}
-			removeDataCopy(xid, key);
-		}
-		transactionMap.remove((Integer) xid);
-		
-		for (String key : toDeleteMap.get(xid)) {
-			if (key == null) {
-				break;
-			}
-			else {
-				temp.remove(key);
-			}
-		}
-		toDeleteMap.remove((Integer) xid);
-		
-		m_fileManager.writePersistentNoSwap(temp);
+			temp = (RMHashMap) m_data.clone();
 			
-		
+			
+			
+			for (String key : transactionMap.get(xid)) 
+			{
+				RMItem toCommit = readDataCopy(xid, key);
+				if (toCommit == null) {
+					break;
+				}
+				else {
+					temp.put(key, toCommit);
+				}
+				removeDataCopy(xid, key);
+			}
+			transactionMap.remove((Integer) xid);
+			
+			for (String key : toDeleteMap.get(xid)) {
+				if (key == null) {
+					break;
+				}
+				else {
+					temp.remove(key);
+				}
+			}
+			toDeleteMap.remove((Integer) xid);
+			System.out.println("Writing to disk" + temp.toString());
+			m_fileManager.writePersistentNoSwap(temp);
+		}
 		
 		log.updateStatus(Status.PersistentMemoryWritten, xid);
 		
