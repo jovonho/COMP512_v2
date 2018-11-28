@@ -7,12 +7,19 @@ import java.util.ArrayList;
 
 public class RMLog extends Log {
 	
-	private ArrayList<Integer> transactions;
+	private int xid;
+	private Status status;
+	/**
+	 * -1 = none
+	 * 0 = vote no
+	 * 1 = vote yes
+	 */
+	private int response = 0;
 	
 	public RMLog(String p_name) {
 		super(p_name);
 		
-		transactions = new ArrayList<Integer>();
+		status = Status.None;
 		
 		FileOutputStream fos;
 		try {
@@ -30,15 +37,23 @@ public class RMLog extends Log {
 		}
 	}
 
-	public ArrayList<Integer> getTransactions() {
-		return transactions;
+	public Status getStatus() {
+		return status;
 	}
 	
-	public void updateLog(int xid) {
-		transactions.add(xid);
+	public int getXid(){
+		return xid;
 	}
 	
-	public void removeTxLog(int xid){
-		transactions.remove((Integer) xid);
+	public void updateStatus(Status new_status, int xid) {
+		status = new_status;
+		this.xid=xid;
+		flushLog();
+	}
+
+	public void clearStatus() {
+		status = Status.None;
+		this.xid=0;
+		flushLog();
 	}
 }

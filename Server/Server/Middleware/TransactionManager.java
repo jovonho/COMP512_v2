@@ -2,7 +2,10 @@ package Server.Middleware;
 
 import Server.Interface.*;
 
+import java.rmi.NotBoundException;
 import java.rmi.RemoteException;
+import java.rmi.registry.LocateRegistry;
+import java.rmi.registry.Registry;
 
 import Server.Common.*;
 import Server.LockManager.*;
@@ -76,6 +79,8 @@ public class TransactionManager {
 	private RMHashMap temp;
 	
 	private int crashMode = 0;
+	
+	static public int vote = -1;
 
 	public TransactionManager(Middleware custs)
 	{
@@ -96,6 +101,11 @@ public class TransactionManager {
 		xidCounter = log.getCounter();
 		crashedTransactions = (ArrayList<Integer>) log.getTransactions().clone();
 		
+		for(int id : crashedTransactions){
+			System.out.println(Color.red + "TM::Transaction " + id + " was still active before crash." + Color.reset);
+		}
+		
+		
 		// reset activeTransactions upon starting 
 		activeTransactions = new ArrayList<>();
 		
@@ -104,12 +114,25 @@ public class TransactionManager {
 	}
 	
 	
+	public void abortCrashedTx() throws RemoteException, InvalidTransactionException {
+		for (int id : crashedTransactions) {
+			try {
+				abortCrashedTx(id);
+			} catch (Exception e) {
+				e.printStackTrace();
+			}
+		}
+		crashedTransactions = new ArrayList<>();
+	}
+	
 	// Crashed transactions have their xid in the activeTrasnactions list but don't have a timer
-	public void abortCrashedTx(int xid) throws RemoteException, InvalidTransactionException {
+	private void abortCrashedTx(int xid) throws RemoteException, InvalidTransactionException {
 		
-		Middleware.m_flightsManager.abort(xid);
-		Middleware.m_carsManager.abort(xid);
-		Middleware.m_roomsManager.abort(xid);
+		Middleware.m_flightsManager.abortCrashedTx(xid);
+		Middleware.m_carsManager.abortCrashedTx(xid);
+		Middleware.m_roomsManager.abortCrashedTx(xid);
+		
+		System.out.println(Color.yellow + "Transaction "  +xid + " aborted." + Color.reset);
 		
 		log.removeTxLog(xid);
 		log.flushLog();
@@ -124,19 +147,10 @@ public class TransactionManager {
 	 */
 	public int start() throws RemoteException 
 	{	
-		
 		cancelRMTimers();
-		int xid = ++xidCounter;
 		
-		for (int id : crashedTransactions) {
-			try {
-				abortCrashedTx(id);
-			} catch (InvalidTransactionException e) {
-				// TODO Auto-generated catch block
-				e.printStackTrace();
-			}
-		}
-		crashedTransactions = new ArrayList<>();
+		int xid = ++xidCounter;
+
 		
 		activeTransactions.add(xid);
 		
@@ -161,15 +175,16 @@ public class TransactionManager {
 		
 		transactionTimers.put(xid, timer);
 		
-		// NEW : We now call start on each resource manager
-		Middleware.m_flightsManager.start(xid);
-		Middleware.m_carsManager.start(xid);
-		Middleware.m_roomsManager.start(xid);
+		try {
+			// NEW : We now call start on each resource manager
+			Middleware.m_flightsManager.start(xid);
+			Middleware.m_carsManager.start(xid);
+			Middleware.m_roomsManager.start(xid);			
+		}
+		catch (RemoteException e) {
+			System.out.println(Color.yellow + " Start RemoteException caught" + Color.reset);
+		}
 		// See not in  abort
-
-		
-		
-		
 		
 		System.out.println("In TM b4 calling updateLog" + log.getTransactions().toString());
 		log.updateLog(xid);
@@ -185,62 +200,105 @@ public class TransactionManager {
 		return xid;
 	}
 	
-	//crash API
-		public void resetCrashes() throws RemoteException{
-			cancelRMTimers();
+	
+	
+	//crash APE
+	public void resetCrashes() throws RemoteException{
+		cancelRMTimers();
 
-			crashMode = 0;
+		crashMode = 0;
 
-			Middleware.m_flightsManager.resetCrashes();
-			Middleware.m_carsManager.resetCrashes();
-			Middleware.m_roomsManager.resetCrashes();
+		Middleware.m_flightsManager.resetCrashes();
+		Middleware.m_carsManager.resetCrashes();
+		Middleware.m_roomsManager.resetCrashes();
 
-			Trace.info("Crash modes at the middleware and the resource manager reset to: " + crashMode);
-			resetRMTimers();
+		Trace.info("Crash modes at the middleware and the resource manager reset to: " + crashMode);
+		resetRMTimers();
+	}
+
+	public void crashMiddleware(int mode) throws RemoteException{
+		cancelRMTimers();
+		crashMode=mode;
+
+		Trace.info("Crash mode at the middleware set to: " + crashMode);
+		resetRMTimers();
+	}
+
+	public void crashResourceManager(String name, int mode) throws RemoteException{
+		cancelRMTimers();
+
+		if(name.equals("flights")){
+			Middleware.m_flightsManager.crashResourceManager(name, mode);
+			Trace.info("Setting crash mode at the Rm: "+name+", to: " + mode);
+		}
+		else if(name.equals("cars")){
+			Middleware.m_carsManager.crashResourceManager(name, mode);
+			Trace.info("Setting crash mode at the Rm: "+name+", to: " + mode);
+		}
+		else if(name.equals("rooms")){
+			Middleware.m_roomsManager.crashResourceManager(name, mode);
+			Trace.info("Setting crash mode at the Rm: "+name+", to: " + mode);
 		}
 
-		public void crashMiddleware(int mode) throws RemoteException{
-			cancelRMTimers();
-			crashMode=mode;
+		resetRMTimers();
 
-			Trace.info("Crash mode at the middleware set to: " + crashMode);
-			resetRMTimers();
-		}
-
-		public void crashResourceManager(String name, int mode) throws RemoteException{
-			cancelRMTimers();
-
-			if(name.equals("flights")){
-				Middleware.m_flightsManager.crashResourceManager(name, mode);
-				Trace.info("Setting crash mode at the Rm: "+name+", to: " + mode);
-			}
-			else if(name.equals("cars")){
-				Middleware.m_carsManager.crashResourceManager(name, mode);
-				Trace.info("Setting crash mode at the Rm: "+name+", to: " + mode);
-			}
-			else if(name.equals("rooms")){
-				Middleware.m_roomsManager.crashResourceManager(name, mode);
-				Trace.info("Setting crash mode at the Rm: "+name+", to: " + mode);
-			}
-
-			resetRMTimers();
-
-		}
+	}
 	
 	private void resetRMTimers() throws RemoteException
 	{
-		Middleware.m_flightsManager.resetTimer();
-		Middleware.m_carsManager.resetTimer();
-		Middleware.m_roomsManager.resetTimer();
-		customersManager.resetTimer();
+		try {
+			Middleware.m_flightsManager.resetTimer();
+		}
+		catch (Exception e) {
+			System.out.println(Color.red  + " resetTimer remote exception caught. Flights down" + Color.reset);
+		}
+		try {
+			Middleware.m_carsManager.resetTimer();
+		}
+		catch (Exception e) {
+			System.out.println(Color.red  + " resetTimer remote exception caught. Cars down" + Color.reset);
+		}
+		try {
+			Middleware.m_roomsManager.resetTimer();
+		}
+		catch (Exception e) {
+			System.out.println(Color.red  + " resetTimer remote exception caught. Rooms down" + Color.reset);
+		}
+		try {
+			customersManager.resetTimer();
+		}
+		catch (Exception e) {
+			System.out.println(Color.red  + " resetTimer remote exception caught. Customers down" + Color.reset);
+		}
+		
 	}
 	
 	private void cancelRMTimers() throws RemoteException
 	{
-		Middleware.m_flightsManager.cancelTimer();
-		Middleware.m_carsManager.cancelTimer();
-		Middleware.m_roomsManager.cancelTimer();
-		customersManager.cancelTimer();
+		try {
+			Middleware.m_flightsManager.cancelTimer();
+		}
+		catch (Exception e) {
+			System.out.println(Color.red  + " resetTimer remote exception caught. Flights down" + Color.reset);
+		}
+		try {
+			Middleware.m_carsManager.cancelTimer();
+		}
+		catch (Exception e) {
+			System.out.println(Color.red  + " resetTimer remote exception caught. Cars down" + Color.reset);
+		}
+		try {
+			Middleware.m_roomsManager.cancelTimer();
+		}
+		catch (Exception e) {
+			System.out.println(Color.red  + " resetTimer remote exception caught. Rooms down" + Color.reset);
+		}
+		try {
+			customersManager.cancelTimer();
+		}
+		catch (Exception e) {
+			System.out.println(Color.red  + " resetTimer remote exception caught. Customers down" + Color.reset);
+		}
 	}
 	
 	// Updated - Milestone 3
@@ -257,17 +315,10 @@ public class TransactionManager {
 	 */
 	public void abort(int xid) throws InvalidTransactionException, RemoteException 
 	{
-		cancelRMTimers();
-		
-		for (int id : crashedTransactions) {
-			try {
-				abortCrashedTx(id);
-			} catch (InvalidTransactionException e) {
-				// TODO Auto-generated catch block
-				e.printStackTrace();
-			}
+		if (transactionTimers.containsKey(xid)) {
+			cancelTimer(xid);			
 		}
-		crashedTransactions = new ArrayList<>();
+		cancelRMTimers();
 		
 		if (!activeTransactions.contains(xid)) 
 		{
@@ -276,19 +327,35 @@ public class TransactionManager {
 		else
 		{
 
-			transactionTimers.get(xid).cancel();
+//			transactionTimers.get(xid).cancel();
 			transactionTimers.remove(xid);
 			
-			Middleware.m_flightsManager.abort(xid);
-			Middleware.m_carsManager.abort(xid);
-			Middleware.m_roomsManager.abort(xid);
+			try {
+				Middleware.m_flightsManager.abort(xid);
+			}
+			catch (Exception e){
+				System.out.println(Color.yellow + " Abort: Remote Exception caught. Flights down." + Color.reset);
+			}
+			try {
+				Middleware.m_carsManager.abort(xid);
+			}
+			catch (Exception e){
+				System.out.println(Color.yellow + " Abort: Remote Exception caught. Cars down." + Color.reset);
+			}
+			try {
+				Middleware.m_roomsManager.abort(xid);				
+			}
+			catch (Exception e){
+				System.out.println(Color.yellow + " Abort: Remote Exception caught. Rooms down." + Color.reset);
+			}
 			
-			//TODO 
-			//abort customers
-			// Remove all local copy objects associated with this transaction
-			for (String key : transactionMap.get(xid)) 
-			{
-				removeDataCopy(xid, key);
+			
+			
+			if (transactionMap.containsKey(xid)) {
+				for (String key : transactionMap.get(xid)) 
+				{
+					removeDataCopy(xid, key);
+				}				
 			}
 			
 			abortedTransactions.add(xid);
@@ -318,11 +385,13 @@ public class TransactionManager {
 		
 		checkValid(xid);
 		
-		System.out.println(Color.cyan + "Customers -- Prepare Initiated " + Color.reset);
+		System.out.println(Color.cyan + "2PC::Customers -- Prepare Initiated " + Color.reset);
 		
 		if (!activeTransactions.contains((Integer) xid)) 
 		{	
 			System.out.println(Color.red + "2PC::Customers -- Prepare FAILED" + Color.reset);
+			
+			vote = 0;
 			return false;
 		}
 		
@@ -358,32 +427,164 @@ public class TransactionManager {
 		// Writing the latest committed version to disk
 		customersManager.storeMapPersistentNoSwap(temp);
 		
-		System.out.println(Color.cyan + " Customers -- Prepare SUCCESS" + Color.reset);
+		System.out.println(Color.cyan + "2PC::Customers -- Prepare SUCCESS" + Color.reset);
 		
+		vote = 1;
 		return true;
 	}
 
 	
-
-	// Updated - Milestone 3
 	public boolean commit(int xid) throws RemoteException, InvalidTransactionException, TransactionAbortedException
 	{
 		checkValid(xid);
 		cancelTimer(xid);
 		cancelRMTimers();
 		
-		System.out.println(Color.cyan + "TM::2PC Protocol initiated." + Color.reset);
 		
-		for (int id : crashedTransactions) {
-			try {
-				abortCrashedTx(id);
-			} catch (InvalidTransactionException e) {
-				// TODO Auto-generated catch block
-				e.printStackTrace();
+		System.out.println(Color.blue + "TM::2PC Protocol initiated." + Color.reset);
+	
+		
+		//crash API
+		if(crashMode==1){
+			System.out.println("Crash for mode: " + crashMode);
+			System.exit(1);
+		}
+		
+
+		
+		
+		int counter = 0;
+		
+		while(counter < 3) {
+			try
+			{
+				System.out.println(Color.yellow + "2PC::Calling prepare on Flights" + Color.reset);
+				Middleware.m_flightsManager.prepare(xid);	
+				System.out.println(Color.cyan + "2PC::Flights prepare went through " + Color.reset);
+				break;
+			}
+			catch (Exception e)
+			{
+				System.out.println(Color.red + "2PC::Prepare - flightsManager is down. Attempt " + counter  + Color.reset);
+				
+				try 
+				{
+					Thread.sleep(recoveryCheckInterval);
+					System.out.println(Color.yellow + "Attempting to rebind Flights" + Color.reset);
+					
+					//Manually re-lookup the RM from the registry
+					Registry registry = LocateRegistry.getRegistry("lab2-4.cs.mcgill.ca", 1099);
+					Middleware.m_flightsManager = (IResourceManager) registry.lookup("group33Flights");
+					
+				} 
+				catch (Exception e1) 
+				{
+					System.out.println(Color.red + "Rebind failed" + Color.reset);
+					e1.printStackTrace();
+				}
+				counter++;
 			}
 		}
-		crashedTransactions = new ArrayList<>();
-
+		
+		if (counter == 3) {
+			System.out.println(Color.red + "2PC::Failed to call prepare on Flights -- ABORT " + Color.reset);
+			abort(xid);	
+			return false;
+		}
+		
+		counter = 0;
+		
+		while(counter < 3) {
+			try
+			{
+				System.out.println(Color.yellow + "2PC::Calling prepare on Cars" + Color.reset);
+				Middleware.m_carsManager.prepare(xid);	
+				System.out.println(Color.cyan + "2PC::Cars prepare went through " + Color.reset);
+				break;
+			}
+			catch (Exception e)
+			{
+				System.out.println(Color.red + "2PC::Prepare - carsManager is down. Attempt " + counter  + Color.reset);
+				
+				try 
+				{
+					Thread.sleep(recoveryCheckInterval);
+					System.out.println(Color.yellow + "Attempting to rebind Cars" + Color.reset);
+					
+					//Manually re-lookup the RM from the registry
+					Registry registry = LocateRegistry.getRegistry("lab1-10.cs.mcgill.ca", 1099);
+					Middleware.m_carsManager = (IResourceManager) registry.lookup("group33Cars");
+					
+				} 
+				catch (Exception e1) 
+				{
+					System.out.println(Color.red + "Rebind failed" + Color.reset);
+					e1.printStackTrace();
+				}
+				counter++;
+			}
+		}
+		
+		if (counter == 3) {
+			System.out.println(Color.red + "2PC::Failed to call prepare on Cars -- ABORT " + Color.reset);
+			abort(xid);	
+			return false;
+		}
+		
+		counter = 0;
+		while(counter < 3) {
+			try
+			{
+				System.out.println(Color.yellow + "2PC::Calling prepare on Rooms" + Color.reset);
+				Middleware.m_roomsManager.prepare(xid);	
+				System.out.println(Color.cyan + "2PC::Rooms prepare went through " + Color.reset);
+				break;
+			}
+			catch (Exception e)
+			{
+				System.out.println(Color.red + "2PC::Prepare - roomsManager is down. Attempt " + counter  + Color.reset);
+				
+				try 
+				{
+					Thread.sleep(recoveryCheckInterval);
+					System.out.println(Color.yellow + "Attempting to rebind Rooms" + Color.reset);
+					
+					//Manually re-lookup the RM from the registry
+					Registry registry = LocateRegistry.getRegistry("open-4.cs.mcgill.ca", 1099);
+					Middleware.m_roomsManager = (IResourceManager) registry.lookup("group33Rooms");
+					
+				} 
+				catch (Exception e1) 
+				{
+					System.out.println(Color.red + "Rebind failed" + Color.reset);
+					e1.printStackTrace();
+				}
+				counter++;
+			}
+		}
+		
+		if (counter == 3) {
+			System.out.println(Color.red + "2PC::Failed to call prepare on Room	s -- ABORT " + Color.reset);
+			abort(xid);	
+			return false;
+		}
+		
+		
+		System.out.println(Color.yellow + "2PC::Calling prepare on Customers" + Color.reset);
+		//Calling prepare on the "customers Manager"
+		prepare(xid);
+		System.out.println(Color.cyan + "2PC::Customers prepare went through " + Color.reset);
+		
+		
+		
+		
+		//crash API
+		if(crashMode==2)
+		{
+			System.out.println("Crash for mode: " + crashMode);
+			System.exit(1);
+		}
+		
 		
 		
 		// Creates a timer to wait for votes 
@@ -400,177 +601,260 @@ public class TransactionManager {
 				}
 				abortedTransactions.add(xid);
 			}
-		}, TTL);
+		}, 30000);
 		
-		boolean consensus = true;
+		long spinTime = 10000;
+		int consensus = 0;
 		
-		
-		int counter = 0;
-		while(counter < 3)
-		{	
-			try
+		// TODO maybe change the way we while loop in this?
+		// Maybe better to have a counter again
+		counter = 0;
+		while(counter < 3) {
+			
+			try 
 			{
-				System.out.println(Color.cyan + "TM::VOTE-REQ sent to Flights Manager" + Color.reset);
-				//Throws RemoteException if crashed
-				consensus = consensus & Middleware.m_flightsManager.prepare(xid);	
-				// if this goes through, we reset counter for the next RM and break out of the while loop
-				counter = 0;
-				break;
-			}
-			catch (Exception e){
-				try {
+				System.out.println(Color.yellow + "2PC::Checking for Flights vote" + Color.reset);
 				
-				// No response from RM -- we try three times
-				counter++;
-				System.out.println(Color.red + "Flights has crashed. Waiting for reboot. Attempt:" + counter + Color.reset);
-				Thread.sleep(recoveryCheckInterval);
-			} catch (InterruptedException e1) {
-				e1.printStackTrace();
-			}}
-		}
-		while(counter < 3)
-		{	
-			try
-			{
-				System.out.println(Color.cyan + "TM::VOTE-REQ sent to Cars Manager" + Color.reset);
-				consensus = consensus & Middleware.m_carsManager.prepare(xid);	
-				counter = 0;
-				break;
+				if (Middleware.m_flightsManager.getVote() != -1) 
+				{
+					consensus += Middleware.m_flightsManager.getVote();	
+					counter = 0;
+					break;
+				}
+				
 			}
-			catch (Exception e){try {
-				counter++;
-				System.out.println(Color.red + "Cars has crashed. Waiting for reboot. Attempt:" + counter + Color.reset);
-				Thread.sleep(recoveryCheckInterval);
-			} catch (InterruptedException e1) {
-				e1.printStackTrace();
-			}}
-		}
-		while(counter < 3)
-		{	
-			try
+			catch (Exception e) 
 			{
-				System.out.println(Color.cyan + "TM::VOTE-REQ sent to Rooms Manager" + Color.reset);
-				consensus = consensus & Middleware.m_roomsManager.prepare(xid);	
-				counter = 0;
-				break;
-			}
-			catch (Exception e){try {
+				System.out.println(Color.red + "2PC::Can't get Flights vote. Attempt " + counter + Color.reset);
+				
+				try 
+				{
+					Thread.sleep(spinTime);
+					System.out.println(Color.yellow + "Attempting to rebind Flights" + Color.reset);
+					
+					//Manually re-lookup the RM from the registry
+					Registry registry = LocateRegistry.getRegistry("lab2-4.cs.mcgill.ca", 1099);
+					Middleware.m_flightsManager = (IResourceManager) registry.lookup("group33Rooms");
+					
+				} 
+				catch (Exception e1) 
+				{
+					System.out.println(Color.red + "Rebind failed" + Color.reset);
+					e1.printStackTrace();
+				}
 				counter++;
-				System.out.println(Color.red + "Rooms has crashed. Waiting for reboot. Attempt:" + counter + Color.reset);
-				Thread.sleep(recoveryCheckInterval);
-			} catch (InterruptedException e1) {
-				e1.printStackTrace();
-			}}
-		}
-		while(counter < 3)
-		{	
-			try
-			{
-				System.out.println(Color.cyan + "TM::VOTE-REQ sent to Customers Manager" + Color.reset);
-				consensus = consensus & prepare(xid);	
-				counter = 0;
-				break;
 			}
-			catch (Exception e){try {
-				counter++;
-				System.out.println(Color.red + "Middleware has crashed. Waiting for reboot. Attempt:" + counter + Color.reset);
-				Thread.sleep(recoveryCheckInterval);
-			} catch (InterruptedException e1) {
-				e1.printStackTrace();
-			}}
 		}
 		
-		// At this point we have a consensus
+		while(Middleware.m_flightsManager.getVote() == -1) 
+		{
+			try 
+			{
+				System.out.println("Vote is " + Middleware.m_flightsManager.getVote() );
+				Thread.sleep(spinTime);
+			} 
+			catch (InterruptedException e) 
+			{
+				e.printStackTrace();
+			}
+		}
 		
+		//crash API
+		if(crashMode==3)
+		{
+			System.out.println("Crash for mode: " + crashMode);
+			System.exit(1);
+		}
+				
+		
+		while(Middleware.m_carsManager.getVote() == -1) 
+		{
+			try 
+			{
+				System.out.println(Color.yellow + "Checking for Cars vote" + Color.reset);
+				Thread.sleep(spinTime);
+			} 
+			catch (InterruptedException e) 
+			{
+				e.printStackTrace();
+			}
+		}
+		consensus += Middleware.m_carsManager.getVote();
+		
+		
+		while(Middleware.m_roomsManager.getVote() == -1) 
+		{
+			try 
+			{
+				System.out.println(Color.yellow + "Checking for Rooms vote" + Color.reset);
+				Thread.sleep(spinTime);
+			} 
+			catch (InterruptedException e) 
+			{
+				e.printStackTrace();
+			}
+		}
+		consensus += Middleware.m_roomsManager.getVote();
+		
+		while(vote == -1) 
+		{
+			try 
+			{
+				System.out.println(Color.yellow + "Checking for Customers vote" + Color.reset);
+				Thread.sleep(spinTime);
+			} 
+			catch (InterruptedException e) 
+			{
+				e.printStackTrace();
+			}
+		}
+		consensus += vote;
+
 		votesTimer.cancel();
 		
+		//crash API
+		if(crashMode==5)
+		{
+			System.out.println("Crash for mode: " + crashMode);
+			System.exit(1);
+		}
 		
-		// Here we write Flights to log.
-		System.out.println(Color.cyan + "TM::received response from Flights manager" + Color.reset);
-		// Here we write Cars to log.
-		System.out.println(Color.cyan + "TM::received response from Cars manager" + Color.reset);
-		// Here we write Rooms to log.
-		System.out.println(Color.cyan + "TM::received response from Rooms manager" + Color.reset);
 		
-		// If any of the RMs decided to abort, we abort here
-		if(!consensus)
-		{	
-			System.out.println(Color.red + "TM::2PC Failed -- ABORT" + Color.reset);
+		
+
+		
+		if(consensus != 4)
+		{
+			System.out.println(Color.red + "2PC::Consensus was not reached: " + consensus + "/4 Only" + Color.reset);
+			System.out.println(Color.red + "2PC::ABORT" + Color.reset);
 			abort(xid);
 			return false;
 		}
 		
-		System.out.println(Color.cyan + "TM::2PC Vote Success" + Color.reset);
+		//Crash mode 5
 		
 
-		// TODO Handle crashes here -- WE HAVE TO COMMIT WHATEVER HAPPENS
-		while(counter < 3) {
+		
+
+		counter = 0;
+		
+		while(counter < 3) 
+		{
 			try
 			{
-				System.out.println(Color.cyan + "TM::Sending COMMIT to Flights Manager" + Color.reset);
+				System.out.println(Color.yellow + "2PC::Sending COMMIT to Flights Manager" + Color.reset);
 				Middleware.m_flightsManager.commit(xid);
+				System.out.println(Color.cyan + "2PC::COMMIT sent to Flights successfully" + Color.reset);
 				counter = 0;
 				break;
 			}
 			catch (Exception e)
 			{
-				try {
+				try 
+				{
 					counter++;
-					System.out.println(Color.red + "Calling commit on Flights RM failed, sleeping then trying again. Attempt:" + counter + Color.reset);
-					Thread.sleep(recoveryCheckInterval);
-				} catch (InterruptedException e1) {
-					// TODO Auto-generated catch block
-					e1.printStackTrace();
-				}
-			}
-		}
-		while(counter < 3) {
-			try
-			{
-				System.out.println(Color.cyan + "TM::Sending COMMIT to Cars Manager" + Color.reset);
-
-				Middleware.m_carsManager.commit(xid);
-				counter = 0;
-				break;
-			}
-			catch (Exception e)
-			{
-				try {
-					counter++;
-					System.out.println(Color.red + "Calling commit on Cars RM failed, sleeping then trying again. Attempt:" + counter + Color.reset );
-					Thread.sleep(recoveryCheckInterval);
-				} catch (InterruptedException e1) {
-					// TODO Auto-generated catch block
-					e1.printStackTrace();
-				}
-			}
-		}
-		while(counter < 3) {
-			try
-			{
-				System.out.println(Color.cyan + "TM::Sending COMMIT to Rooms Manager" + Color.reset);
-
-				Middleware.m_roomsManager.commit(xid);
-				counter = 0;
-				break;
-			}
-			catch (Exception e)
-			{
-				try {
-					counter++;
-					System.out.println(Color.red + "Calling commit on Rooms RM failed, sleeping then trying again. Attempt:" + counter + Color.reset);
-					Thread.sleep(recoveryCheckInterval);
-				} catch (InterruptedException e1) {
-					// TODO Auto-generated catch block
+					if (counter == 3) 
+					{
+						System.out.println(Color.red + "2PC::Tried 3 times to call commit on Flights, data will be inaccessible (but not inconsistent). Moving on..." +  Color.reset);
+						break;
+					}
+					else {
+						System.out.println(Color.red + "2PC::Flights could not be reached. Attempt " + counter + Color.reset);
+						Thread.sleep(recoveryCheckInterval);						
+					}
+				} 
+				catch (InterruptedException e1) 
+				{
 					e1.printStackTrace();
 				}
 			}
 		}
 		
-		System.out.println(Color.cyan + "TM::Sending COMMIT to Customers Manager" + Color.reset);
+		
+		//crash API
+		if(crashMode==6)
+		{
+			System.out.println("Crash for mode: " + crashMode);
+			System.exit(1);
+		}
+		
+	
+		while(counter < 3) 
+		{
+			try
+			{
+				System.out.println(Color.yellow + "2PC::Sending COMMIT to Cars Manager" + Color.reset);
+				Middleware.m_carsManager.commit(xid);
+				System.out.println(Color.cyan + "2PC::COMMIT sent to Cars successfully" + Color.reset);
+				counter = 0;
+				break;
+			}
+			catch (Exception e)
+			{
+				try 
+				{
+					counter++;
+					if (counter == 3) 
+					{
+						System.out.println(Color.red + "2PC::Tried 3 times to call commit on Cars. Data will be inaccessible (but not inconsistent). Moving on..." +  Color.reset);
+						break;
+					}
+					else {
+						System.out.println(Color.red + "2PC::Cars could not be reached. Attempt " + counter + Color.reset);
+						Thread.sleep(recoveryCheckInterval);						
+					}
+				} 
+				catch (InterruptedException e1) 
+				{
+					e1.printStackTrace();
+				}
+			}
+		}
+		
+		while(counter < 3) 
+		{
+			try
+			{
+				System.out.println(Color.yellow + "2PC::Sending COMMIT to Rooms Manager" + Color.reset);
+				Middleware.m_roomsManager.commit(xid);
+				System.out.println(Color.cyan + "2PC::COMMIT sent to Rooms successfully" + Color.reset);
+				counter = 0;
+				break;
+			}
+			catch (Exception e)
+			{
+				try 
+				{
+					counter++;
+					if (counter == 3) 
+					{
+						System.out.println(Color.red + "2PC::Tried 3 times to call commit on Rooms, data will be inaccessible (but not inconsistent). Moving on..." +  Color.reset);
+						break;
+					}
+					else {
+						System.out.println(Color.red + "2PC::Room could not be reached. Attempt " + counter + Color.reset);
+						Thread.sleep(recoveryCheckInterval);						
+					}
+				} 
+				catch (InterruptedException e1) 
+				{
+					e1.printStackTrace();
+				}
+			}
+		}
+		
+		
+		System.out.println(Color.yellow + "2PC::Sending COMMIT to Customers Manager" + Color.reset);
 		// Perform the actual commit of customers
 		customersManager.fileManagerSwap();
 		customersManager.updateStorage();
+		System.out.println(Color.cyan + "2PC::COMMIT sent to Customers successfully" + Color.reset);
+		
+		//crash API
+		if(crashMode==7){
+			System.out.println("Crash for mode: " + crashMode);
+			System.exit(1);
+		}
 		
 		activeTransactions.remove((Integer) xid);
 		transactionMap.remove(xid);
@@ -584,11 +868,9 @@ public class TransactionManager {
 		System.out.println(Color.purp + "TM::Transaction: " + xid + " has commited" + Color.reset);
 		resetRMTimers();
 		return true;
-	}
+		
+	}	
 
-	
-	
-	
 	
 	private RMItem readDataCopy(int xid, String key)
 	{
@@ -1785,5 +2067,6 @@ public class TransactionManager {
 
 	
 	
+
 
 }

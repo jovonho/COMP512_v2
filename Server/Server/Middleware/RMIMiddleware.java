@@ -63,11 +63,9 @@ public class RMIMiddleware extends Middleware {
 			m_flightsManager = m_managers[0];
 			m_carsManager = m_managers[1];
 			m_roomsManager = m_managers[2];
-			
-			//server.txManager = new TransactionManager((Middleware) server); 
 
+			server.txManager.abortCrashedTx();
 			
-
 		}
 		catch (Exception e) {    
 			System.err.println((char)27 + "[31;1mClient exception: " + (char)27 + "[0mUncaught exception");
@@ -107,7 +105,8 @@ public class RMIMiddleware extends Middleware {
 						e.printStackTrace();
 					}
 				}
-			});                                       
+			});       
+			
 			System.out.println("'" + s_serverName + "' middleware server ready and bound to '" + s_rmiPrefix + s_serverName + "'");
 
 		}
@@ -132,7 +131,7 @@ public class RMIMiddleware extends Middleware {
 			while (true) {
 				try {
 					Registry registry = LocateRegistry.getRegistry(server, port);
-					m_managers[index] = (IResourceManager)registry.lookup(s_rmiPrefix + name);
+					m_managers[index] = (IResourceManager) registry.lookup(s_rmiPrefix + name);
 					System.out.println("Connected to '" + name + "' server [" + server + ":" + port + "/" + s_rmiPrefix + name + "]");
 					break;
 				}

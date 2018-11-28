@@ -304,4 +304,8 @@ public interface IResourceManager extends Remote
 	public void fileManagerSwap() throws RemoteException;
 	
 	public void updateStorage() throws RemoteException;
+
+	public int getVote() throws RemoteException;
+
+	public void abortCrashedTx(int xid) throws RemoteException;
 }

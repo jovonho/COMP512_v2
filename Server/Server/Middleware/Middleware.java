@@ -59,6 +59,7 @@ public abstract class Middleware implements IResourceManager {
 		txManager = new TransactionManager(this);
 	}
 	
+	
 	public void resetTimer() {
 		timer.cancel();
 		timer = new Timer();
@@ -74,6 +75,10 @@ public abstract class Middleware implements IResourceManager {
 			}
 		}, TTL);
 		
+	}
+	
+	public int getVote() {
+		return -394747397;
 	}
 	
 	public void cancelTimer() {
@@ -142,8 +147,6 @@ public abstract class Middleware implements IResourceManager {
 		try {
 
 			m_fileManager.writePersistentNoSwap(data);
-			
-			Trace.info("m_data: " + m_data.toString());;
 		} catch (Exception e) {
 			e.printStackTrace();
 		}
@@ -502,4 +505,9 @@ public abstract class Middleware implements IResourceManager {
 	public boolean changeObject(int xid, String key, int count) throws RemoteException {
 		return false;
 	}
+	
+	public void abortCrashedTx(int xid) throws RemoteException {
+		
+	}
+
 }

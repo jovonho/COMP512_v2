@@ -33,17 +33,24 @@ public class ResourceManager implements IResourceManager
 	final int TTL = 60000;
 	
 	private RMLog log;
-	private ArrayList<Integer> activeTransactions;
+	private ArrayList<Integer> activeTransactions = new ArrayList<Integer>();
 	
-	private ArrayList<Integer> crashedTransactions = new ArrayList<Integer>();
 	
 	private RMHashMap temp;
 	
-	private int crashMode = 0;
+	private int crashMode ;
+	
+	private int vote = -1;
+	private int ack  = -1;
+	
+	private int lastXid;
+	
+	Status status;
 
 	public ResourceManager(String p_name)
 	{
 		m_name = p_name;
+		crashMode=0;
 		m_fileManager = new FileManager(m_name);
 		try {
 			m_data = m_fileManager.getPersistentData();
@@ -51,6 +58,7 @@ public class ResourceManager implements IResourceManager
 			e.printStackTrace();
 		}
 		
+		System.out.println(Color.cyan + "Just booted. Storage contains: " + Color.reset + m_data.toString());
 		
 		try 
 		{
@@ -64,8 +72,11 @@ public class ResourceManager implements IResourceManager
 		{
 			e.printStackTrace();
 		}
-		activeTransactions = (ArrayList<Integer>) log.getTransactions().clone();
 		
+		status = log.getStatus();
+		lastXid = log.getXid();
+		
+		System.out.println(Color.yellow + "Status on bootup is " + status.toString() + "\nlastXid is "  +lastXid + Color.reset);
 
 		// Global timer
 		timer = new Timer();
@@ -82,7 +93,28 @@ public class ResourceManager implements IResourceManager
 		}, TTL);
 		
 		
+		if(status == Status.PrepareStarted){
+			try {
+				System.out.println(Color.yellow + "Status was PrepareStarted, gonna call prepare again, "
+						+ "with the transaction not in the active transactions anymore so it should just abort" + Color.reset);
+				prepare(lastXid);
+				
+			} 
+			catch (RemoteException e) {
+				System.out.println(Color.red + " Exception caught trying to call prepare(lastXid)" + Color.reset);
+				e.printStackTrace();
+			}
+		}
+		else if(status == Status.PersistentMemoryWritten){
+				sendVoteResponse(1);
+				activeTransactions.add(log.getXid());
+		}
+		
+		log.clearStatus();
 	}
+	
+	
+	
 	
 	
 	public void resetTimer() {
@@ -101,30 +133,15 @@ public class ResourceManager implements IResourceManager
 		}, TTL);
 	}
 	
-	
-	public void cancelTimer() {
-		try {
-			timer.cancel();
-		}
-		catch (Exception e) 
-		{
 
-		}
-	}
-	// To satisfy the interface, real start method is start(int xid)
-	public int start() throws RemoteException 
-	{
-		return 1;
-	}	
 	
 	// Real start method
-	public void start(int xid) {
+	public void start(int xid) 
+	{
 		activeTransactions.add(xid);
 		transactionMap.put(xid, new ArrayList<String>());
 		toDeleteMap.put(xid, new ArrayList<String>());
 		
-		
-		log.updateLog(xid);
 		log.flushLog();
 	}
 	
@@ -147,6 +164,12 @@ public class ResourceManager implements IResourceManager
 	// Updated - Milestone 3
 	public boolean commit(int xid) throws RemoteException, TransactionAbortedException, InvalidTransactionException
 	{
+		log.updateStatus(Status.CommitReceived, xid);
+		//crash API
+		if(crashMode==4){
+			System.out.println("Crash for mode: " + crashMode);
+			System.exit(1);
+		}
 		
 		try 
 		{
@@ -165,11 +188,8 @@ public class ResourceManager implements IResourceManager
 		transactionMap.remove(xid);
 		toDeleteMap.remove(xid);
 		
-		Trace.info(Color.cyan + "Transaction-" + xid + " has committed at the RM" + Color.reset);
-		
-		log.removeTxLog(xid);
-		log.flushLog();
-		
+		System.out.println(Color.cyan + "RM::Transaction-" + xid + " has committed at the RM" + Color.reset);
+		log.clearStatus();
 		return true;
 	}
 	
@@ -185,22 +205,43 @@ public class ResourceManager implements IResourceManager
 	 * that item and this case is handle in the commit method.
 	 */
 
-	public void abort(int xid) throws RemoteException, InvalidTransactionException {
+	public void abort(int xid) throws RemoteException, InvalidTransactionException 
+	{
 
+		log.updateStatus(Status.AbortReceived, xid);
+		//crash API
+		if(crashMode==4){
+			System.out.println("Crash for mode: " + crashMode);
+			System.exit(1);
+		}
+		
 		// Remove all local copy objects associated with this transaction
 		System.out.println(transactionMap.toString());
 		
-		for (String key : transactionMap.get(xid)) 
-		{
-			removeDataCopy(xid, key);
+		if (transactionMap.containsKey(xid)) {
+			for (String key : transactionMap.get(xid)) 
+			{
+				removeDataCopy(xid, key);
+			}
 		}
 		
 		// Remove the transaction's data structures
 		transactionMap.remove(xid);
 		toDeleteMap.remove(xid);
 		
-		log.updateLog(xid);
-		log.removeTxLog(xid);
+		log.clearStatus();
+	}
+	
+	public void abortCrashedTx(int xid) {
+		System.out.println(Color.yellow + "Aborting transaction " + xid);
+		if (transactionMap.containsKey(xid)) {
+			for (String key : transactionMap.get(xid)) 
+			{
+				removeDataCopy(xid, key);
+			}
+		}
+		transactionMap.remove(xid);
+		toDeleteMap.remove(xid);
 	}
 	
 	
@@ -216,18 +257,43 @@ public class ResourceManager implements IResourceManager
 	{
 		cancelTimer();
 		
+		
+		log.updateStatus(Status.PrepareStarted, xid);
+		
+		//crash API
+		if(crashMode==1){
+			System.out.println("Crash for mode: " + crashMode);
+			System.exit(1);
+		}
+		
+		// Crash mode 1
+		
 		System.out.println(Color.cyan + "2PC::" + m_name + " -- Prepare Initiated" + Color.reset);
 		
 		
-		if (!activeTransactions.contains((Integer) xid)) {
-			
+		if (!activeTransactions.contains((Integer) xid)) 
+		{	
 			System.out.println(Color.red + "2PC::" + m_name + " -- Prepare FAILED" + Color.reset);
+			
+			//crash API
+			if(crashMode==2){
+				System.out.println("Crash for mode: " + crashMode);
+				System.exit(1);
+			}
+			
+			System.out.println(Color.yellow + "2PC::Sending vote NO" + Color.reset);
+			sendVoteResponse(0);
+			
+			//crash API
+			if(crashMode==3){
+				System.out.println("Crash for mode: " + crashMode);
+				System.exit(1);
+			}
 			return false;
 		}
-		
-		//Start a timer to wait for the Decision from coordinator
-		
+
 		temp = (RMHashMap) m_data.clone();
+		
 		
 		
 		for (String key : transactionMap.get(xid)) 
@@ -241,7 +307,6 @@ public class ResourceManager implements IResourceManager
 			}
 			removeDataCopy(xid, key);
 		}
-		
 		transactionMap.remove((Integer) xid);
 		
 		for (String key : toDeleteMap.get(xid)) {
@@ -255,6 +320,29 @@ public class ResourceManager implements IResourceManager
 		toDeleteMap.remove((Integer) xid);
 		
 		m_fileManager.writePersistentNoSwap(temp);
+			
+		
+		
+		log.updateStatus(Status.PersistentMemoryWritten, xid);
+		
+		//crash API
+		if(crashMode==2)
+		{
+			System.out.println("Crash for mode: " + crashMode);
+			System.exit(1);
+		}
+		//Crash mode 2
+		
+		// Equivalent to sending our vote to the TM
+		System.out.println(Color.yellow + "2PC::Sending vote YES" + Color.reset);
+		sendVoteResponse(1);
+		
+		//crash API
+		if(crashMode==3)
+		{
+			System.out.println("Crash for mode: " + crashMode);
+			System.exit(1);
+		}
 		
 		System.out.println(Color.cyan + "2PC::" + m_name + " -- Prepare SUCCESS" + Color.reset);
 		resetTimer();
@@ -1069,5 +1157,29 @@ public class ResourceManager implements IResourceManager
 		}
 		
 	}
+	
+	private void sendVoteResponse(int response)
+	{
+		vote = response;
+	}
+	
+	public int getVote() {
+		return vote;
+	}
+	
+	public void cancelTimer() {
+		try {
+			timer.cancel();
+		}
+		catch (Exception e) 
+		{
+			
+		}
+	}
+	// To satisfy the interface, real start method is start(int xid)
+	public int start() throws RemoteException 
+	{
+		return 1;
+	}	
 }
  
