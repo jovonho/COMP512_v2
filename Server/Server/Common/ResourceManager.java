@@ -60,7 +60,7 @@ public class ResourceManager implements IResourceManager
 			e.printStackTrace();
 		}
 		
-		System.out.println(Color.cyan + "Just booted. Storage contains: " + Color.reset + m_data.toString());
+		System.out.println(Color.cyan + "Just booted. Storage contains:\n" + Color.reset + m_data.toString());
 		
 		try 
 		{
@@ -78,7 +78,14 @@ public class ResourceManager implements IResourceManager
 		status = log.getStatus();
 		lastXid = log.getXid();
 		
-		System.out.println(Color.yellow + "Status on bootup is " + status.toString() + "\nlastXid is "  +lastXid + Color.reset);
+		if(log.getCrashModeFive()) 
+		{
+			System.out.println(Color.bgRed + Color.black + "CRASHING DURING RECOVERY" + Color.reset + Color.bgReset);
+			log.setCrashModeFive(false);
+			System.exit(1);
+		}
+		
+		System.out.println(Color.yellow + "Status on bootup is " + status.toString() + Color.reset);
 
 		// Global timer
 		timer = new Timer();
@@ -113,9 +120,11 @@ public class ResourceManager implements IResourceManager
 			sendVoteResponse(1);
 			flag=true;
 		}
+		else if(status == Status.CommitReceived){
+			//Should work on its own. Called magic
+		}
 		
 		log.clearStatus();
-		System.out.println("vote is " + vote);
 	}
 	
 	
@@ -162,6 +171,11 @@ public class ResourceManager implements IResourceManager
 	public void crashResourceManager(String name, int mode) throws RemoteException{
 		crashMode=mode;
 		
+		if(mode == 5){
+			log.setCrashModeFive(true);
+			//System.exit(1);
+		}
+		
 		Trace.info("Crash mode at the resource manager: "+this.m_name+", set to: " + crashMode);
 	}
 
@@ -169,9 +183,17 @@ public class ResourceManager implements IResourceManager
 	// Updated - Milestone 3
 	public boolean commit(int xid) throws RemoteException, TransactionAbortedException, InvalidTransactionException
 	{
+		
+		if(!activeTransactions.contains(xid))
+		{
+			//System.out.println(Color.bgRed + Color.black + "SHIT THE BED!" + Color.bgReset + Color.reset);
+			return false;
+		}
 		log.updateStatus(Status.CommitReceived, xid);
+		
 		//crash API
-		if(crashMode==4){
+		if(crashMode==4) 
+		{
 			System.out.println("Crash for mode: " + crashMode);
 			System.exit(1);
 		}
@@ -199,7 +221,7 @@ public class ResourceManager implements IResourceManager
 		transactionMap.remove(xid);
 		toDeleteMap.remove(xid);
 		
-		System.out.println(Color.cyan + "RM::Transaction-" + xid + " has committed at the RM" + Color.reset);
+		System.out.println(Color.purp + "RM::Transaction-" + xid + " has committed at the RM" + Color.reset);
 		log.clearStatus();
 		return true;
 	}
@@ -244,7 +266,7 @@ public class ResourceManager implements IResourceManager
 	}
 	
 	public void abortCrashedTx(int xid) {
-		System.out.println(Color.yellow + "Aborting transaction " + xid);
+		System.out.println(Color.yellow + "Aborting transaction " + xid + Color.reset);
 		if (transactionMap.containsKey(xid)) {
 			for (String key : transactionMap.get(xid)) 
 			{
@@ -291,7 +313,7 @@ public class ResourceManager implements IResourceManager
 				System.out.println("Crash for mode: " + crashMode);
 				System.exit(1);
 			}
-			
+				
 			System.out.println(Color.yellow + "2PC::Sending vote NO" + Color.reset);
 			sendVoteResponse(0);
 			

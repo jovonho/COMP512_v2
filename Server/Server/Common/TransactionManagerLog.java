@@ -10,10 +10,16 @@ import java.io.ObjectOutputStream;
 import java.io.Serializable;
 import java.util.ArrayList;
 
-public class TransactionManagerLog extends Log {
-
+public class TransactionManagerLog extends Log 
+{
 	protected int xidCounter;
+	public int cxid = 0;
+	public TwoPCstatus status = TwoPCstatus.None;
 	private ArrayList<Integer> transactions;
+	public int[] voteResponses = {-1, -1, -1, -1};
+	private boolean usedCustomers = false;
+	private  int customerVote = -1;
+	private boolean crashModeEight = false;
 	
 	public TransactionManagerLog(String p_name)
 	{
@@ -37,7 +43,50 @@ public class TransactionManagerLog extends Log {
 		catch (Exception e) {
 			e.printStackTrace();
 		}
-		
+	}
+	
+	public void setCustomerVote(int i) {
+		customerVote = i;
+		flushLog();
+	}
+	
+	public int getCustomerVote() {
+		return customerVote;
+	}
+	
+	public void resetCustomerVote() {
+		customerVote = -1;
+		flushLog();
+	}
+	
+	public void setUsedCustomer(boolean value) {
+		usedCustomers = value;
+		flushLog();
+	}
+	
+	public boolean getUsedCustomer() {
+		return usedCustomers;
+	}
+	public void setStatus(TwoPCstatus status) {
+		this.status = status;
+		flushLog();
+	}
+	
+	public TwoPCstatus getStatus() {
+		return status;
+	}
+	
+	public void setCrashModeEight(){
+		crashModeEight=true;
+	}
+	
+	public void resetCrashModeEight(){
+		crashModeEight=false;
+		flushLog();
+	}
+	
+	public boolean getCrashModeEight(){
+		return crashModeEight;
 	}
 	
 	
@@ -56,5 +105,11 @@ public class TransactionManagerLog extends Log {
 	
 	public void removeTxLog(int xid){
 		transactions.remove((Integer) xid);
+	}
+
+
+	public void resetCustomer() {
+		usedCustomers = false;
+		flushLog();
 	}
 }

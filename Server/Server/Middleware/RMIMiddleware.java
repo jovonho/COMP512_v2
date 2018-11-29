@@ -64,6 +64,10 @@ public class RMIMiddleware extends Middleware {
 			m_carsManager = m_managers[1];
 			m_roomsManager = m_managers[2];
 
+			server.txManager.handleCrashMode1();
+			server.txManager.twoPCSecondPhase();
+			server.txManager.twoPCLastPhase();
+			server.txManager.finaliseCommit();
 			server.txManager.abortCrashedTx();
 			
 		}

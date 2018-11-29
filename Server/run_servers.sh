@@ -3,6 +3,8 @@
 #TODO: SPECIFY THE HOSTNAMES OF 4 CS MACHINES (lab1-1, cs-2, etc...)
 MACHINES=(lab2-4.cs.mcgill.ca lab1-10.cs.mcgill.ca open-4.cs.mcgill.ca localhost)
 
+
+kill $(ps -A | grep rmir | awk '{print $1}')
 tmux new-session \; \
 	split-window -h \; \
 	split-window -v \; \

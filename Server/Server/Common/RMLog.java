@@ -15,6 +15,7 @@ public class RMLog extends Log {
 	 * 1 = vote yes
 	 */
 	private int response = 0;
+	private boolean crashModeFive = false;
 	
 	public RMLog(String p_name) {
 		super(p_name);
@@ -35,6 +36,15 @@ public class RMLog extends Log {
 		catch (Exception e) {
 			e.printStackTrace();
 		}
+	}
+	
+	public void setCrashModeFive(boolean mode) {
+		crashModeFive = mode;
+		flushLog();
+	}
+	
+	public boolean getCrashModeFive(){
+		return crashModeFive;
 	}
 
 	public Status getStatus() {

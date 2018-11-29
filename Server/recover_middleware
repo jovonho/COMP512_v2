@@ -1,3 +1,4 @@
 #! /bin/bash
 
+./kill_rmi > /dev/null 2>&1 
 ./run_middleware.sh lab2-4.cs.mcgill.ca lab1-10.cs.mcgill.ca open-4.cs.mcgill.ca

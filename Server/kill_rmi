@@ -1,0 +1,3 @@
+#!/bin/bash
+
+ps -A | grep rmir | awk '{print $1}' | xargs kill -9

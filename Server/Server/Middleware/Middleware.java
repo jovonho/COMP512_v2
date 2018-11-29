@@ -43,6 +43,8 @@ public abstract class Middleware implements IResourceManager {
 			e.printStackTrace();
 		}
 		
+		System.out.println(Color.cyan + "Just booted. Data contains:\n" + Color.reset +  m_data.toString());
+		
 		timer = new Timer();
 		timer.schedule(new TimerTask() {
 			@Override
